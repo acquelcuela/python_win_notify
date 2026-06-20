@@ -1,0 +1,26 @@
+# Local configuration and secrets
+src/.env
+*.local
+
+# Python virtual environments
+src/.venv/
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Runtime files
+src/.cache/
+src/logs/
+src/output/
+src/state/
+
+# Imported reference/archive files
+all_md_files_20260619/
+batch_stock_files/
+files1/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

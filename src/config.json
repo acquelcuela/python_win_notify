@@ -1,0 +1,12 @@
+{
+  "batch_schedule": ["00:00", "07:00"],
+  "batch_window_minutes": 14,
+  "modules": {
+    "stock_nikkei": true,
+    "stock_watchlist": false,
+    "stock_sector": false,
+    "stock_dividend": false,
+    "report_html": true,
+    "mail_gmail": true
+  }
+}

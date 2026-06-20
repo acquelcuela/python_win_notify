@@ -1,0 +1,28 @@
+@echo off
+setlocal
+
+cd /d "%~dp0"
+
+if not exist logs mkdir logs
+
+set "LOG_DATE=%date:~0,4%%date:~5,2%%date:~8,2%"
+echo %LOG_DATE%| findstr /r "^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$" >nul
+if errorlevel 1 (
+  for /f %%i in ('powershell.exe -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set "LOG_DATE=%%i"
+)
+set "TASK_LOG=%~dp0logs\task_runner_%LOG_DATE%.log"
+
+set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
+
+>> "%TASK_LOG%" echo [%date% %time%] Task kick started.
+
+if not exist "%VENV_PYTHON%" (
+  >> "%TASK_LOG%" echo [%date% %time%] Virtual environment was not found. Run setup_windows.bat first.
+  exit /b 1
+)
+
+"%VENV_PYTHON%" main.py >> "%TASK_LOG%" 2>&1
+set "EXIT_CODE=%ERRORLEVEL%"
+>> "%TASK_LOG%" echo [%date% %time%] Task kick finished. Exit code: %EXIT_CODE%
+>> "%TASK_LOG%" echo.
+exit /b %EXIT_CODE%
