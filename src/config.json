@@ -3,10 +3,47 @@
   "batch_window_minutes": 14,
   "modules": {
     "stock_nikkei": true,
-    "stock_watchlist": false,
+    "stock_watchlist": true,
     "stock_sector": false,
-    "stock_dividend": false,
+    "stock_dividend": true,
     "report_html": true,
     "mail_gmail": true
+  },
+  "watchlist": {
+    "tickers": [
+      {"ticker": "7203.T", "name": "トヨタ自動車"},
+      {"ticker": "9983.T", "name": "ファーストリテイリング"},
+      {"ticker": "8035.T", "name": "東京エレクトロン"},
+      {"ticker": "1570.T", "name": "NEXT FUNDS 日経平均レバレッジ"},
+      {"ticker": "3436.T", "name": "SUMCO"},
+      {"ticker": "200A.T", "name": "NF日経半導体株"},
+      {"ticker": "7762.T", "name": "シチズン時計"},
+      {"ticker": "6976.T", "name": "太陽誘電"},
+      {"ticker": "5016.T", "name": "JX金属"},
+      {"ticker": "5401.T", "name": "日本製鉄"},
+      {"ticker": "7013.T", "name": "IHI"},
+      {"ticker": "6981.T", "name": "村田製作所"},
+      {"ticker": "5803.T", "name": "フジクラ"},
+      {"ticker": "AAPL", "name": "アップル"},
+      {"ticker": "NVDA", "name": "エヌビディア"}
+    ]
+  },
+  "dividend_schedule": {
+    "targets": {
+      "RYLD": {
+        "name": "Global X Russell 2000 Covered Call ETF",
+        "ex_dividend_date": "2026-06-22",
+        "last_dividend": 0.157,
+        "date_confidence": "estimated_from_recent_history",
+        "source": "Dividend.com の履歴で RYLD は 2026-05-18 まで月次分配を確認。6月分は直近の月次パターンから推定。"
+      },
+      "SDIV": {
+        "name": "Global X SuperDividend ETF",
+        "ex_dividend_date": "2026-07-02",
+        "last_dividend": 0.18,
+        "date_confidence": "estimated_from_recent_history",
+        "source": "Dividend.com の履歴で SDIV は 2026-06-03 まで月次分配を確認。7月分は月初スケジュールと 2026-07-03 米国市場休場を踏まえて推定。"
+      }
+    }
   }
 }

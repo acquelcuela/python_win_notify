@@ -16,7 +16,7 @@ if (-not (Test-Path -LiteralPath $ConfigFile)) {
     throw "config.json was not found: $ConfigFile"
 }
 
-$config = Get-Content -LiteralPath $ConfigFile -Raw | ConvertFrom-Json
+$config = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $scheduleTimes = @($config.batch_schedule) | ForEach-Object { "$_".Trim() } | Where-Object { $_ }
 
 if (-not $scheduleTimes) {

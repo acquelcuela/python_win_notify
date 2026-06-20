@@ -224,3 +224,99 @@ Settings were later split to make AI-assisted edits safer:
 
 This keeps secrets out of git while allowing normal behavior changes to be
 committed and reviewed.
+
+## Intentional Spec Changes After Initial Draft
+
+The original markdown drafts used `.env` `MODULE_*` values for module ON/OFF
+settings. After implementation, this was changed intentionally:
+
+- Module flags are now stored in `config.json`.
+- `.env` is kept for secrets only, especially Gmail credentials.
+- This makes normal behavior changes reviewable in git and safer for AI-assisted
+  edits because secrets are not mixed with runtime switches.
+
+The original drafts also mentioned a `06:30` run time. After scheduler setup and
+manual operation checks, the active windows were changed to:
+
+- `00:00-00:14`
+- `07:00-07:14`
+
+The task itself still starts every 15 minutes. `main.py` decides whether the
+current start is inside an active window. This keeps Task Scheduler simple while
+preventing duplicate sends through `state/run_history.json`.
+
+`stock_nikkei` was implemented first, but Yahoo Finance / yfinance can return no
+data or fail depending on network conditions, Yahoo endpoint behavior, ticker
+availability, or local firewall/proxy state. This is treated as an expected
+runtime failure mode:
+
+- `stock_nikkei.json` is still written with `status=error`.
+- `report_html` still generates a report and shows the fetch failure.
+- The batch can continue to Gmail/report generation instead of crashing on a
+  market data outage.
+
+## Current Next Module
+
+The next useful data module is `stock_dividend`.
+
+Purpose:
+
+- Track RYLD and SDIV dividend timing.
+- Estimate the current action phase from the next ex-dividend date.
+- Add the result to the HTML report so the mail says whether the period is
+  `buy_window`, `buy_now`, `hold`, `sell_start`, `sell_now`, `neutral`, or
+  `unknown`.
+
+The first version should use yfinance when possible and degrade to `unknown`
+when the next ex-dividend date is not available.
+
+## Dividend Schedule Fallback
+
+After the first mail test, yfinance could not connect to Yahoo Finance from the
+batch environment. Gmail delivery and HTML generation were verified, but market
+data retrieval was not reliable enough to be the only source for RYLD/SDIV
+timing.
+
+The dividend module was therefore changed to use a configured schedule first:
+
+- `config.json` `dividend_schedule.targets` stores the next ex-dividend date.
+- The batch still attempts yfinance for price/yield details.
+- If yfinance fails, the configured date is still used to calculate the phase.
+- The report shows the date source and confidence so estimated dates do not look
+  like silently verified market data.
+
+Current seed dates were researched from public pages:
+
+- Global X fund pages confirm monthly distributions for RYLD and SDIV.
+- Dividend.com history showed RYLD distributions through `2026-05-18`.
+- Dividend.com history showed SDIV distributions through `2026-06-03`.
+
+The configured future dates should be reviewed and updated before each target
+month once Global X or another reliable source publishes the next distribution
+calendar.
+
+## Watchlist Module
+
+`stock_watchlist` was added after the dividend timing module.
+
+Purpose:
+
+- Track configured tickers from `config.json` `watchlist.tickers`.
+- Fetch the latest daily OHLCV data with yfinance.
+- Calculate the change and percentage change from the previous trading day.
+- Sort the report by `change_pct` descending so the strongest names appear
+  first.
+- Continue when individual tickers fail and show those failures as warnings in
+  the HTML report.
+- Display watchlist results separately for Japanese stocks and US stocks.
+- Prefer configured Japanese/Katakana names over yfinance English names so the
+  report is easier to scan in mail.
+
+The first configured list is:
+
+- `7203.T`
+- `9983.T`
+- `8035.T`
+- `1570.T`
+- `AAPL`
+- `NVDA`

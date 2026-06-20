@@ -54,6 +54,8 @@ src\
   modules\
     __init__.py
     stock_nikkei.py
+    stock_watchlist.py
+    stock_dividend.py
     report_html.py
     mail_gmail.py
   scheduler\
@@ -113,6 +115,29 @@ Output:
 output\report.html
 ```
 
+`modules\stock_watchlist.py`
+
+Fetches configured watchlist tickers with yfinance and calculates each ticker's
+latest daily change.
+
+Output:
+
+```text
+output\stock_watchlist.json
+```
+
+`modules\stock_dividend.py`
+
+Tracks RYLD and SDIV dividend timing with yfinance where possible. It estimates
+the action phase from the next ex-dividend date and degrades to `unknown` when
+the date is not available.
+
+Output:
+
+```text
+output\stock_dividend.json
+```
+
 `modules\mail_gmail.py`
 
 Sends `output\report.html` through Gmail SMTP over SSL.
@@ -144,14 +169,14 @@ mail_gmail
 Currently implemented:
 
 - `stock_nikkei`
+- `stock_watchlist`
+- `stock_dividend`
 - `report_html`
 - `mail_gmail`
 
 Phase 2 placeholders:
 
-- `stock_watchlist`
 - `stock_sector`
-- `stock_dividend`
 
 Unimplemented modules are skipped if enabled accidentally.
 
@@ -168,11 +193,33 @@ Current structure:
   "batch_window_minutes": 14,
   "modules": {
     "stock_nikkei": true,
-    "stock_watchlist": false,
+    "stock_watchlist": true,
     "stock_sector": false,
-    "stock_dividend": false,
+    "stock_dividend": true,
     "report_html": true,
     "mail_gmail": true
+  },
+  "watchlist": {
+    "tickers": [
+      {"ticker": "7203.T", "name": "Toyota Motor"},
+      {"ticker": "9983.T", "name": "Fast Retailing"},
+      {"ticker": "8035.T", "name": "Tokyo Electron"},
+      {"ticker": "1570.T", "name": "Nikkei 225 Leveraged ETF"},
+      {"ticker": "AAPL", "name": "Apple"},
+      {"ticker": "NVDA", "name": "NVIDIA"}
+    ]
+  },
+  "dividend_schedule": {
+    "targets": {
+      "RYLD": {
+        "ex_dividend_date": "2026-06-22",
+        "date_confidence": "estimated_from_recent_history"
+      },
+      "SDIV": {
+        "ex_dividend_date": "2026-07-02",
+        "date_confidence": "estimated_from_recent_history"
+      }
+    }
   }
 }
 ```
