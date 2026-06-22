@@ -1,13 +1,30 @@
 {
-  "batch_schedule": ["00:00", "07:00"],
+  "batch_schedule": ["00:00", "07:00", "12:15"],
   "batch_window_minutes": 14,
   "modules": {
     "stock_nikkei": true,
     "stock_watchlist": true,
     "stock_sector": false,
     "stock_dividend": true,
+    "market_news": true,
+    "ai_summary": true,
     "report_html": true,
     "mail_gmail": true
+  },
+  "ai_summary": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash"
+  },
+  "market_news": {
+    "queries": [
+      "日本株 前場 日経平均 TOPIX",
+      "東京株式 前引け 日経平均",
+      "東証 前場 セクター 業種別",
+      "日本株 材料株 前場 上昇 下落",
+      "東京市場 前場 値上がり 値下がり 銘柄"
+    ],
+    "max_items": 10,
+    "lookback_hours": 18
   },
   "watchlist": {
     "tickers": [
@@ -21,6 +38,7 @@
       {"ticker": "6976.T", "name": "太陽誘電"},
       {"ticker": "5016.T", "name": "JX金属"},
       {"ticker": "5401.T", "name": "日本製鉄"},
+      {"ticker": "6613.T", "name": "QDレーザ"},
       {"ticker": "7013.T", "name": "IHI"},
       {"ticker": "6981.T", "name": "村田製作所"},
       {"ticker": "5803.T", "name": "フジクラ"},

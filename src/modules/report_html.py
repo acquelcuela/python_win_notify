@@ -1,6 +1,7 @@
 import html
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -44,39 +45,141 @@ def _load_json(path: Path) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _ai_highlight_terms(root: Path) -> list[str]:
+    terms = []
+    watchlist = _load_json(root / "output" / "stock_watchlist.json")
+    if watchlist and watchlist.get("data"):
+        for item in watchlist["data"]:
+            if item.get("market") != "japan":
+                continue
+            for value in (item.get("name"), item.get("ticker")):
+                if value and value not in terms:
+                    terms.append(str(value))
+    extra_terms = ["日経225先物", "TOPIX連動ETF", "日経平均", "TOPIX"]
+    for value in extra_terms:
+        if value not in terms:
+            terms.append(value)
+    return sorted(terms, key=len, reverse=True)
+
+
+def _escape_and_highlight(text: str, terms: list[str]) -> str:
+    escaped = html.escape(text)
+    escaped_terms = [html.escape(term) for term in terms if term]
+    if not escaped_terms:
+        return escaped.replace("\n", "<br>")
+    pattern = re.compile("|".join(re.escape(term) for term in escaped_terms))
+    highlighted = pattern.sub(
+        lambda match: f'<strong class="ai-emphasis">{match.group(0)}</strong>',
+        escaped,
+    )
+    return highlighted.replace("\n", "<br>")
+
+
+def _ai_summary_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "ai_summary.json")
+    if not payload or payload.get("status") != "ok" or not payload.get("data"):
+        return ""
+
+    terms = _ai_highlight_terms(root)
+    market_data = _escape_and_highlight(payload["data"].get("market_data", ""), terms)
+    news = _escape_and_highlight(payload["data"].get("news", ""), terms)
+    blocks = ""
+    if market_data:
+        blocks += f"""
+        <div class="ai-block">
+          <div class="ai-block-title">指定銘柄・市場データからの考察</div>
+          <div>{market_data}</div>
+        </div>
+        """
+    if news:
+        blocks += f"""
+        <div class="ai-block">
+          <div class="ai-block-title">ニュースからの考察</div>
+          <div>{news}</div>
+        </div>
+        """
+    if not blocks:
+        return ""
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">AI概要と考察</div>
+      <div class="ai-summary">{blocks}</div>
+      <div class="muted">生成モデル: {html.escape(payload.get("model", "-"))}</div>
+    </section>
+    """
+
+
 def _nikkei_section(root: Path) -> str:
     payload = _load_json(root / "output" / "stock_nikkei.json")
     if not payload:
-        return "<p>日経225先物データファイルは生成されていません。</p>"
+        return "<p>市場概況データファイルは生成されていません。</p>"
 
     if payload.get("status") != "ok" or not payload.get("data"):
         error = html.escape(payload.get("error", "unknown error"))
         return f"""
         <div class="alert">
-          <strong>日経225先物データの取得に失敗しました。</strong>
+          <strong>市場概況データの取得に失敗しました。</strong>
           <div>{error}</div>
         </div>
         """
 
     data = payload["data"]
-    change_text, change_color = _fmt_change(data.get("change"), data.get("change_pct", 0))
-    change_state, change_label = _change_state(data.get("change"))
+    indices = data.get("indices") or {"nikkei_futures": data}
+    nikkei = indices.get("nikkei_futures")
+    topix = indices.get("topix")
+    primary = nikkei or topix or {}
+    change_state, change_label = _change_state(primary.get("change"))
+
+    def index_card(item: dict | None) -> str:
+        if not item:
+            return ""
+        change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
+        return f"""
+        <div class="index-card">
+          <div class="index-head">
+            <strong>{html.escape(item.get("label", item.get("symbol", "-")))}</strong>
+            <span class="muted">{html.escape(item.get("symbol", "-"))}</span>
+          </div>
+          <div class="index-current">{_fmt_decimal(item.get("current"))}</div>
+          <div class="change" style="color:{change_color};">{change_text}</div>
+          <table>
+            <tr><th>始値</th><td>{_fmt_decimal(item.get("open"))}</td></tr>
+            <tr><th>高値</th><td>{_fmt_decimal(item.get("high"))}</td></tr>
+            <tr><th>安値</th><td>{_fmt_decimal(item.get("low"))}</td></tr>
+            <tr><th>前回終値</th><td>{_fmt_decimal(item.get("prev_close"))}</td></tr>
+          </table>
+        </div>
+        """
+
+    comparison = data.get("comparison") or {}
+    comparison_html = ""
+    if comparison:
+        diff = comparison.get("diff_pct")
+        diff_text = "-" if diff is None else f"{float(diff):+.2f}pt"
+        comparison_html = f"""
+        <div class="comparison-box">
+          <strong>日経225先物 - TOPIX連動ETF:</strong> {html.escape(diff_text)}
+          <div>{html.escape(comparison.get("summary", ""))}</div>
+          <div class="muted">注: TOPIX連動ETFは前営業日の日中取引データです。夜間取引の結果ではありません。</div>
+        </div>
+        """
+
+    warnings = ""
+    if payload.get("warnings"):
+        warning_items = "".join(f"<li>{html.escape(item)}</li>" for item in payload["warnings"])
+        warnings = f'<div class="note"><strong>注意</strong><ul>{warning_items}</ul></div>'
 
     return f"""
     <section class="panel market-{change_state}">
-      <div class="section-title">日経225先物 ({html.escape(data.get("symbol", "NKD=F"))})</div>
+      <div class="section-title">日経225先物 / TOPIX 市場概況</div>
       <div class="section-body">
         <div class="state-label">{change_label}</div>
-        <div class="current">{_fmt_number(data.get("current"))}</div>
-        <div class="change" style="color:{change_color};">{change_text}</div>
       </div>
-      <table>
-        <tr><th>始値</th><td>{_fmt_number(data.get("open"))}</td></tr>
-        <tr><th>高値</th><td>{_fmt_number(data.get("high"))}</td></tr>
-        <tr><th>安値</th><td>{_fmt_number(data.get("low"))}</td></tr>
-        <tr><th>前回終値</th><td>{_fmt_number(data.get("prev_close"))}</td></tr>
-        <tr><th>出来高</th><td>{_fmt_number(data.get("volume"))}</td></tr>
-      </table>
+      {index_card(nikkei)}
+      {index_card(topix)}
+      {comparison_html}
+      {warnings}
     </section>
     """
 
@@ -226,7 +329,12 @@ def run(root: Path) -> None:
     output_path = output_dir / "report.html"
     now = datetime.now(JST)
 
-    body = _nikkei_section(root) + _watchlist_section(root) + _dividend_section(root)
+    body = (
+        _ai_summary_section(root)
+        + _nikkei_section(root)
+        + _watchlist_section(root)
+        + _dividend_section(root)
+    )
     document = f"""<!doctype html>
 <html lang="ja">
 <head>
@@ -249,6 +357,14 @@ def run(root: Path) -> None:
     h3 {{ margin:18px 0 0; font-size:14px; color:#111827; }}
     .state-label {{ display:inline-block; margin:0 0 12px; padding:5px 8px; border-radius:6px; background:#111827; color:#ffffff; font-size:12px; font-weight:bold; }}
     .current {{ font-size:32px; font-weight:bold; line-height:1.1; }}
+    .index-card {{ margin-top:10px; padding:11px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .index-head {{ font-size:15px; line-height:1.35; }}
+    .index-current {{ margin-top:8px; font-size:28px; font-weight:bold; line-height:1.1; }}
+    .comparison-box {{ margin-top:12px; padding:10px; background:#ffffff; border:1px solid #d1d5db; border-radius:8px; font-size:13px; line-height:1.5; }}
+    .ai-summary {{ font-size:14px; line-height:1.65; }}
+    .ai-block {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .ai-block-title {{ margin-bottom:6px; font-size:13px; font-weight:bold; color:#111827; }}
+    .ai-emphasis {{ font-weight:bold; color:#111827; background:#fef3c7; padding:0 2px; border-radius:3px; }}
     .change {{ margin-top:8px; font-size:18px; font-weight:bold; }}
     .stock-name {{ display:block; font-size:15px; line-height:1.25; }}
     .stock-card {{ margin-top:9px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}

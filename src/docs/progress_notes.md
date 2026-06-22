@@ -320,3 +320,39 @@ The first configured list is:
 - `1570.T`
 - `AAPL`
 - `NVDA`
+
+## AI Summary Module
+
+`ai_summary` was added to place a short Gemini-generated overview at the top of
+the HTML mail.
+
+Important premise passed to Gemini:
+
+- Nikkei 225 futures can include overnight movement.
+- TOPIX is represented by the TOPIX-linked ETF `1306.T`.
+- `1306.T` is previous business day's regular Tokyo market data, not overnight
+  TOPIX futures data.
+- The comparison is therefore a market context note, not a strict same-session
+  comparison.
+
+The module reads `GEMINI_API_KEY` from `.env`. If the key is missing or the API
+call fails, the batch still continues and the report is generated without the AI
+summary.
+
+## Midday Market News
+
+A `12:15` active window was added for a midday report after the Japanese market
+morning session.
+
+`market_news` fetches Google News RSS search results before `ai_summary` runs.
+The default searches focus on:
+
+- Japanese stocks morning session
+- Tokyo market morning close
+- Nikkei average and TOPIX related movement
+- Japanese market sectors, themes, movers, gainers, and decliners
+
+The collected headlines are passed to Gemini so the AI summary can mention
+public morning-session news context. News links are not shown in the mail body;
+the mail should contain the AI-written summary of sectors, themes, and notable
+Japanese stock moves instead.

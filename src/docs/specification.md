@@ -23,7 +23,7 @@ Recommended `config.json` settings:
 
 ```json
 {
-  "batch_schedule": ["00:00", "07:00"],
+  "batch_schedule": ["00:00", "07:00", "12:15"],
   "batch_window_minutes": 14
 }
 ```
@@ -160,10 +160,11 @@ password.
 ```text
 stock_nikkei
 stock_watchlist
-stock_sector
-stock_dividend
-report_html
-mail_gmail
+    stock_sector
+    stock_dividend
+    ai_summary
+    report_html
+    mail_gmail
 ```
 
 Currently implemented:
@@ -171,6 +172,7 @@ Currently implemented:
 - `stock_nikkei`
 - `stock_watchlist`
 - `stock_dividend`
+- `ai_summary`
 - `report_html`
 - `mail_gmail`
 
@@ -196,8 +198,25 @@ Current structure:
     "stock_watchlist": true,
     "stock_sector": false,
     "stock_dividend": true,
+    "market_news": true,
+    "ai_summary": true,
     "report_html": true,
     "mail_gmail": true
+  },
+  "ai_summary": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash"
+  },
+  "market_news": {
+    "queries": [
+      "日本株 前場 日経平均 TOPIX",
+      "東京株式 前引け 日経平均",
+      "東証 前場 セクター 業種別",
+      "日本株 材料株 前場 上昇 下落",
+      "東京市場 前場 値上がり 値下がり 銘柄"
+    ],
+    "max_items": 10,
+    "lookback_hours": 18
   },
   "watchlist": {
     "tickers": [
@@ -234,6 +253,7 @@ Use `.env.example` as the template for `.env`.
 GMAIL_ADDRESS=your@gmail.com
 GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
 MAIL_TO=your@gmail.com
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 `.env` is ignored by git because it contains secrets.

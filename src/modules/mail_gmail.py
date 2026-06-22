@@ -35,7 +35,7 @@ def run(root: Path) -> None:
 
     html_body = report_path.read_text(encoding="utf-8")
     now = datetime.now(JST)
-    subject = f"[NightlyBatchNotify] {now.strftime('%Y-%m-%d')} morning report"
+    subject = f"🐸 [NightlyBatchNotify] {now.strftime('%Y-%m-%d')} morning report"
 
     message = MIMEMultipart("alternative")
     message["Subject"] = subject

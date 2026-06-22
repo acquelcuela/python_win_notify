@@ -17,6 +17,8 @@ MODULE_ORDER = [
     "stock_watchlist",
     "stock_sector",
     "stock_dividend",
+    "market_news",
+    "ai_summary",
     "report_html",
     "mail_gmail",
 ]
