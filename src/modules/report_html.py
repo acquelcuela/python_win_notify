@@ -1,3 +1,4 @@
+import csv
 import html
 import json
 import logging
@@ -45,7 +46,33 @@ def _load_json(path: Path) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _ai_highlight_terms(root: Path) -> list[str]:
+def _data_alias_terms(root: Path, text: str) -> list[str]:
+    terms = []
+    data_path = root / "data" / "data_j.csv"
+    if data_path.exists():
+        with data_path.open(encoding="utf-8", newline="") as file:
+            rows = csv.reader(file)
+            first = next(rows, None)
+            headers = next(rows, None) if first == ["表1"] else first
+            if headers:
+                reader = csv.DictReader(file, fieldnames=headers)
+                for row in reader:
+                    name = str(row.get("銘柄名") or "").strip()
+                    if len(name) >= 4 and name in text and name not in terms:
+                        terms.append(name)
+
+    alias_path = root / "data" / "data_j_aliases.json"
+    aliases = _load_json(alias_path)
+    if aliases:
+        for item in aliases.get("aliases", []):
+            for alias in item.get("aliases", []):
+                value = str(alias).strip()
+                if value and value in text and value not in terms:
+                    terms.append(value)
+    return terms
+
+
+def _ai_highlight_terms(root: Path, text: str = "") -> list[str]:
     terms = []
     watchlist = _load_json(root / "output" / "stock_watchlist.json")
     if watchlist and watchlist.get("data"):
@@ -61,6 +88,9 @@ def _ai_highlight_terms(root: Path) -> list[str]:
             for value in (item.get("name"), item.get("ticker")):
                 if value and value not in terms:
                     terms.append(str(value))
+    for value in _data_alias_terms(root, text):
+        if value not in terms:
+            terms.append(value)
     extra_terms = ["日経225先物", "TOPIX連動ETF", "日経平均", "TOPIX"]
     for value in extra_terms:
         if value not in terms:
@@ -86,9 +116,11 @@ def _ai_summary_section(root: Path) -> str:
     if not payload or payload.get("status") != "ok" or not payload.get("data"):
         return ""
 
-    terms = _ai_highlight_terms(root)
-    market_data = _escape_and_highlight(payload["data"].get("market_data", ""), terms)
-    news = _escape_and_highlight(payload["data"].get("news", ""), terms)
+    raw_market_data = payload["data"].get("market_data", "")
+    raw_news = payload["data"].get("news", "")
+    terms = _ai_highlight_terms(root, f"{raw_market_data}\n{raw_news}")
+    market_data = _escape_and_highlight(raw_market_data, terms)
+    news = _escape_and_highlight(raw_news, terms)
     blocks = ""
     if market_data:
         blocks += f"""

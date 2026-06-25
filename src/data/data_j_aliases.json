@@ -47,6 +47,34 @@
     {
       "ticker": "9766.T",
       "aliases": ["コナミG", "コナミＧ"]
+    },
+    {
+      "ticker": "4203.T",
+      "aliases": ["住友ベ", "住友ベーク"]
+    },
+    {
+      "ticker": "2121.T",
+      "aliases": ["MIXI", "ミクシィ"]
+    },
+    {
+      "ticker": "2168.T",
+      "aliases": ["パソナ"]
+    },
+    {
+      "ticker": "6674.T",
+      "aliases": ["ＧＳユアサ", "GSユアサ"]
+    },
+    {
+      "ticker": "9508.T",
+      "aliases": ["九電"]
+    },
+    {
+      "ticker": "8804.T",
+      "aliases": ["東建物"]
+    },
+    {
+      "ticker": "9684.T",
+      "aliases": ["スクエニHD", "スクエニＨＤ", "スクエニ"]
     }
   ]
 }
