@@ -159,6 +159,31 @@ def _nikkei_section(root: Path) -> str:
         </div>
         """
 
+    def index_compact_cell(item: dict | None) -> str:
+        if not item:
+            return '<td class="index-grid-cell"></td>'
+        change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
+        return f"""
+        <td class="index-grid-cell">
+          <div class="index-mini-card">
+            <div class="index-mini-label">{html.escape(item.get("label", item.get("symbol", "-")))}</div>
+            <div class="muted">{html.escape(item.get("symbol", "-"))}</div>
+            <div class="index-mini-current">{_fmt_decimal(item.get("current"))}</div>
+            <div class="index-mini-change" style="color:{change_color};">{change_text}</div>
+          </div>
+        </td>
+        """
+
+    index_grid = f"""
+      <table class="index-grid">
+        <tr>
+          {index_compact_cell(nikkei_average)}
+          {index_compact_cell(nikkei_futures)}
+          {index_compact_cell(topix)}
+        </tr>
+      </table>
+    """
+
     comparisons = data.get("comparisons") or {}
     market_comparison = comparisons.get("nikkei_average_vs_topix") or data.get("comparison") or {}
     futures_comparison = comparisons.get("nikkei_futures_vs_average") or {}
@@ -195,9 +220,7 @@ def _nikkei_section(root: Path) -> str:
       <div class="section-body">
         <div class="state-label">{change_label}</div>
       </div>
-      {index_card(nikkei_average)}
-      {index_card(nikkei_futures)}
-      {index_card(topix)}
+      {index_grid}
       {comparison_html}
       {warnings}
     </section>
@@ -310,6 +333,7 @@ def _news_related_gain_cards(matches: list[dict], note: str) -> str:
                 <strong>{html.escape(item.get("name", ""))}</strong>
                 <span class="muted">{html.escape(item.get("ticker", "-"))}</span>
               </div>
+              <div class="news-hit-price">{_fmt_decimal(item.get("close"))}</div>
               <div class="stock-change" style="color:{change_color};">{change_text}</div>
               {headlines}
             </div>
@@ -470,6 +494,12 @@ def run(root: Path) -> None:
     .index-card {{ margin-top:10px; padding:11px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
     .index-head {{ font-size:15px; line-height:1.35; }}
     .index-current {{ margin-top:8px; font-size:28px; font-weight:bold; line-height:1.1; }}
+    .index-grid {{ width:100%; margin-top:6px; border-collapse:separate; border-spacing:5px 0; table-layout:fixed; }}
+    .index-grid-cell {{ width:33.33%; padding:0; border:0; vertical-align:top; }}
+    .index-mini-card {{ min-height:104px; padding:8px 5px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .index-mini-label {{ min-height:32px; font-size:12px; font-weight:bold; line-height:1.25; overflow-wrap:anywhere; }}
+    .index-mini-current {{ margin-top:6px; font-size:16px; font-weight:bold; line-height:1.15; overflow-wrap:anywhere; }}
+    .index-mini-change {{ margin-top:5px; font-size:11px; font-weight:bold; line-height:1.25; }}
     .comparison-box {{ margin-top:12px; padding:10px; background:#ffffff; border:1px solid #d1d5db; border-radius:8px; font-size:13px; line-height:1.5; }}
     .ai-summary {{ font-size:14px; line-height:1.65; }}
     .ai-block {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
@@ -486,6 +516,7 @@ def run(root: Path) -> None:
     .stock-trend span {{ display:block; }}
     .stock-trend strong {{ display:block; font-size:11px; }}
     .news-hit-card {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .news-hit-price {{ margin-top:7px; font-size:16px; font-weight:bold; line-height:1.15; }}
     .news-hit-title {{ margin-top:7px; color:#334155; font-size:12px; line-height:1.45; font-weight:normal; }}
     .muted {{ margin-top:3px; color:#6b7280; font-size:12px; font-weight:normal; }}
     .badge {{ display:inline-block; padding:3px 7px; border-radius:6px; color:#ffffff; font-size:12px; font-weight:bold; white-space:nowrap; }}

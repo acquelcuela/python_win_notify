@@ -3,6 +3,12 @@ setlocal
 
 cd /d "%~dp0"
 
+echo NightlyBatchNotify force test run
+echo.
+echo This runs main.py --force and ignores schedule windows.
+echo Enabled modules may fetch market/news data, call Gemini, and send Gmail.
+echo.
+
 if not exist logs mkdir logs
 
 set "LOG_DATE=%date:~0,4%%date:~5,2%%date:~8,2%"
