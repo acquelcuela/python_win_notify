@@ -18,6 +18,7 @@ MODULE_ORDER = [
     "stock_sector",
     "stock_dividend",
     "market_news",
+    "news_movers",
     "ai_summary",
     "report_html",
     "mail_gmail",

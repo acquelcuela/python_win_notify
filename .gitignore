@@ -21,6 +21,9 @@ all_md_files_20260619/
 batch_stock_files/
 files1/
 
+# Local screenshots and mail layout captures
+pic/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

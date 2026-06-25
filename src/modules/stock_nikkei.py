@@ -8,6 +8,7 @@ import yfinance as yf
 
 JST = timezone(timedelta(hours=9), "JST")
 SYMBOL = "NKD=F"
+NIKKEI_AVERAGE_SYMBOL = "^N225"
 TOPIX_SYMBOL = "1306.T"
 
 
@@ -90,20 +91,55 @@ def _fetch_topix_data() -> dict:
     }
 
 
-def _build_comparison(nikkei: dict | None, topix: dict | None) -> dict | None:
-    if not nikkei or not topix:
+def _fetch_daily_index_data(symbol: str, label: str, digits: int = 2) -> dict:
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period="10d", interval="1d", auto_adjust=False)
+    hist = hist.dropna(subset=["Close"])
+    if len(hist) < 2:
+        raise ValueError(f"No enough price data returned for {symbol}.")
+
+    latest = hist.iloc[-1]
+    previous = hist.iloc[-2]
+    current = float(latest["Close"])
+    prev_close = float(previous["Close"])
+    change = current - prev_close
+    change_pct = (change / prev_close * 100) if prev_close else 0.0
+
+    return {
+        "symbol": symbol,
+        "label": label,
+        "current": round(current, digits),
+        "open": round(float(latest["Open"]), digits),
+        "high": round(float(latest["High"]), digits),
+        "low": round(float(latest["Low"]), digits),
+        "prev_close": round(prev_close, digits),
+        "change": round(change, digits),
+        "change_pct": round(change_pct, 2),
+        "volume": int(latest["Volume"]) if "Volume" in latest else None,
+    }
+
+
+def _build_pair_comparison(
+    left: dict | None,
+    right: dict | None,
+    left_name: str,
+    right_name: str,
+) -> dict | None:
+    if not left or not right:
         return None
 
-    diff_pct = round(float(nikkei["change_pct"]) - float(topix["change_pct"]), 2)
+    diff_pct = round(float(left["change_pct"]) - float(right["change_pct"]), 2)
     if diff_pct > 0.1:
-        summary = "日経225先物がTOPIX連動ETFより強い動きです。"
+        summary = f"{left_name}が{right_name}より強い動きです。"
     elif diff_pct < -0.1:
-        summary = "TOPIX連動ETFが日経225先物より強い動きです。"
+        summary = f"{right_name}が{left_name}より強い動きです。"
     else:
-        summary = "日経225先物とTOPIX連動ETFはほぼ同じ方向感です。"
+        summary = f"{left_name}と{right_name}はほぼ同じ方向感です。"
 
     return {
         "diff_pct": diff_pct,
+        "left_label": left_name,
+        "right_label": right_name,
         "summary": summary,
     }
 
@@ -130,6 +166,14 @@ def run(root: Path) -> None:
         logging.error("[stock_nikkei] nikkei futures fetch failed: %s", exc)
 
     try:
+        nikkei_average = _fetch_daily_index_data(NIKKEI_AVERAGE_SYMBOL, "日経平均", digits=2)
+        data.setdefault("indices", {})["nikkei_average"] = nikkei_average
+    except Exception as exc:
+        nikkei_average = None
+        warnings.append(f"{NIKKEI_AVERAGE_SYMBOL}: {exc}")
+        logging.error("[stock_nikkei] nikkei average fetch failed: %s", exc)
+
+    try:
         topix = _fetch_topix_data()
         data.setdefault("indices", {})["topix"] = topix
     except Exception as exc:
@@ -137,9 +181,26 @@ def run(root: Path) -> None:
         warnings.append(f"{TOPIX_SYMBOL}: {exc}")
         logging.error("[stock_nikkei] topix fetch failed: %s", exc)
 
-    comparison = _build_comparison(nikkei, topix)
-    if comparison:
-        data["comparison"] = comparison
+    market_comparison = _build_pair_comparison(
+        nikkei_average,
+        topix,
+        "日経平均",
+        "TOPIX連動ETF",
+    )
+    futures_comparison = _build_pair_comparison(
+        nikkei,
+        nikkei_average,
+        "日経225先物",
+        "日経平均",
+    )
+    comparisons = {}
+    if market_comparison:
+        comparisons["nikkei_average_vs_topix"] = market_comparison
+        data["comparison"] = market_comparison
+    if futures_comparison:
+        comparisons["nikkei_futures_vs_average"] = futures_comparison
+    if comparisons:
+        data["comparisons"] = comparisons
 
     if data.get("indices"):
         payload = {

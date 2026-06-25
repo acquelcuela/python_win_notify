@@ -1,0 +1,28 @@
+{
+  "aliases": [
+    {
+      "ticker": "285A.T",
+      "aliases": ["キオクシア", "キオクシアHD"]
+    },
+    {
+      "ticker": "8035.T",
+      "aliases": ["東エレク"]
+    },
+    {
+      "ticker": "3010.T",
+      "aliases": ["ポラリスHD"]
+    },
+    {
+      "ticker": "5016.T",
+      "aliases": ["JX金属"]
+    },
+    {
+      "ticker": "6857.T",
+      "aliases": ["アドバンテスト"]
+    },
+    {
+      "ticker": "7173.T",
+      "aliases": ["東京きらぼし", "きらぼし"]
+    }
+  ]
+}

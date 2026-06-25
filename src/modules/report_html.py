@@ -55,6 +55,12 @@ def _ai_highlight_terms(root: Path) -> list[str]:
             for value in (item.get("name"), item.get("ticker")):
                 if value and value not in terms:
                     terms.append(str(value))
+    movers = _load_json(root / "output" / "news_movers.json")
+    if movers and movers.get("data"):
+        for item in movers["data"]:
+            for value in (item.get("name"), item.get("ticker")):
+                if value and value not in terms:
+                    terms.append(str(value))
     extra_terms = ["日経225先物", "TOPIX連動ETF", "日経平均", "TOPIX"]
     for value in extra_terms:
         if value not in terms:
@@ -126,9 +132,10 @@ def _nikkei_section(root: Path) -> str:
 
     data = payload["data"]
     indices = data.get("indices") or {"nikkei_futures": data}
-    nikkei = indices.get("nikkei_futures")
+    nikkei_futures = indices.get("nikkei_futures")
+    nikkei_average = indices.get("nikkei_average")
     topix = indices.get("topix")
-    primary = nikkei or topix or {}
+    primary = nikkei_average or topix or nikkei_futures or {}
     change_state, change_label = _change_state(primary.get("change"))
 
     def index_card(item: dict | None) -> str:
@@ -152,16 +159,28 @@ def _nikkei_section(root: Path) -> str:
         </div>
         """
 
-    comparison = data.get("comparison") or {}
+    comparisons = data.get("comparisons") or {}
+    market_comparison = comparisons.get("nikkei_average_vs_topix") or data.get("comparison") or {}
+    futures_comparison = comparisons.get("nikkei_futures_vs_average") or {}
     comparison_html = ""
-    if comparison:
-        diff = comparison.get("diff_pct")
+    if market_comparison:
+        diff = market_comparison.get("diff_pct")
         diff_text = "-" if diff is None else f"{float(diff):+.2f}pt"
         comparison_html = f"""
         <div class="comparison-box">
-          <strong>日経225先物 - TOPIX連動ETF:</strong> {html.escape(diff_text)}
-          <div>{html.escape(comparison.get("summary", ""))}</div>
+          <strong>日経平均 - TOPIX連動ETF:</strong> {html.escape(diff_text)}
+          <div>{html.escape(market_comparison.get("summary", ""))}</div>
           <div class="muted">注: TOPIX連動ETFは前営業日の日中取引データです。夜間取引の結果ではありません。</div>
+        </div>
+        """
+    if futures_comparison:
+        diff = futures_comparison.get("diff_pct")
+        diff_text = "-" if diff is None else f"{float(diff):+.2f}pt"
+        comparison_html += f"""
+        <div class="comparison-box">
+          <strong>日経225先物 - 日経平均:</strong> {html.escape(diff_text)}
+          <div>{html.escape(futures_comparison.get("summary", ""))}</div>
+          <div class="muted">注: 先物は夜間の動きを含むため、通常の日経平均とは時間軸が異なる参考比較です。</div>
         </div>
         """
 
@@ -172,11 +191,12 @@ def _nikkei_section(root: Path) -> str:
 
     return f"""
     <section class="panel market-{change_state}">
-      <div class="section-title">日経225先物 / TOPIX 市場概況</div>
+      <div class="section-title">日経平均 / TOPIX 市場概況</div>
       <div class="section-body">
         <div class="state-label">{change_label}</div>
       </div>
-      {index_card(nikkei)}
+      {index_card(nikkei_average)}
+      {index_card(nikkei_futures)}
       {index_card(topix)}
       {comparison_html}
       {warnings}
@@ -185,26 +205,40 @@ def _nikkei_section(root: Path) -> str:
 
 
 def _watchlist_cards(items: list[dict]) -> str:
-    cards = []
+    cells = []
     for item in items:
         change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
-        cards.append(
+        trend_rows = []
+        for trend in item.get("multi_day_changes") or []:
+            trend_text, trend_color = _fmt_change(trend.get("change"), trend.get("change_pct", 0))
+            trend_rows.append(
+                f"""
+                <div class="stock-trend">
+                  <span>{html.escape(trend.get("label", ""))}</span>
+                  <strong style="color:{trend_color};">{trend_text}</strong>
+                </div>
+                """
+            )
+        cells.append(
             f"""
-            <div class="stock-card">
-              <table class="mini-table">
-                <tr>
-                  <td>
-                    <strong class="stock-name">{html.escape(item.get("name", ""))}</strong>
-                    <div class="muted">{html.escape(item.get("ticker", "-"))}</div>
-                  </td>
-                  <td class="stock-price">{_fmt_decimal(item.get("close"))}</td>
-                </tr>
-              </table>
-              <div class="stock-change" style="color:{change_color};">{change_text}</div>
-            </div>
+            <td class="stock-grid-cell">
+              <div class="stock-card">
+                <strong class="stock-name">{html.escape(item.get("name", ""))}</strong>
+                <div class="muted">{html.escape(item.get("ticker", "-"))}</div>
+                <div class="stock-price">{_fmt_decimal(item.get("close"))}</div>
+                <div class="stock-change" style="color:{change_color};">{change_text}</div>
+                {''.join(trend_rows)}
+              </div>
+            </td>
             """
         )
-    return "".join(cards)
+
+    rows = []
+    for index in range(0, len(cells), 2):
+        left = cells[index]
+        right = cells[index + 1] if index + 1 < len(cells) else '<td class="stock-grid-cell"></td>'
+        rows.append(f"<tr>{left}{right}</tr>")
+    return f'<table class="stock-grid">{"".join(rows)}</table>'
 
 
 def _watchlist_table(title: str, items: list[dict]) -> str:
@@ -213,6 +247,81 @@ def _watchlist_table(title: str, items: list[dict]) -> str:
     return f"""
     <h3>{html.escape(title)}</h3>
     {_watchlist_cards(items)}
+    """
+
+
+def _news_matched_terms(item: dict) -> list[str]:
+    terms = []
+    for value in (item.get("name"), item.get("ticker")):
+        if value:
+            terms.append(str(value))
+    ticker = str(item.get("ticker") or "")
+    if "." in ticker:
+        terms.append(ticker.split(".", 1)[0])
+    return [term for term in terms if len(term) >= 2]
+
+
+def _news_related_gain_section(root: Path) -> str:
+    movers = _load_json(root / "output" / "news_movers.json")
+    if movers and movers.get("status") == "ok" and movers.get("data"):
+        matches = movers["data"]
+        if matches:
+            return _news_related_gain_cards(matches, "CSV銘柄一覧・略称マスターとニュース見出しを照合した銘柄です。上昇・下落の両方を表示します。")
+
+    watchlist = _load_json(root / "output" / "stock_watchlist.json")
+    news = _load_json(root / "output" / "market_news.json")
+    if not watchlist or not news or not watchlist.get("data") or not news.get("data"):
+        return ""
+
+    titles = [str(item.get("title") or "") for item in news["data"]]
+    matches = []
+    for item in watchlist["data"]:
+        if item.get("market") != "japan":
+            continue
+        if float(item.get("change_pct") or 0) <= 0:
+            continue
+
+        matched_titles = []
+        for title in titles:
+            if any(term in title for term in _news_matched_terms(item)):
+                matched_titles.append(title)
+        if matched_titles:
+            matches.append({**item, "matched_titles": matched_titles[:2]})
+
+    if not matches:
+        return ""
+
+    matches.sort(key=lambda item: item.get("change_pct") or 0, reverse=True)
+    return _news_related_gain_cards(matches, "注目銘柄リスト内で、ニュース見出しに出ていた銘柄です。上昇・下落の両方を表示します。")
+
+
+def _news_related_gain_cards(matches: list[dict], note: str) -> str:
+    cards = []
+    for item in matches:
+        change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
+        headlines = "".join(
+            f'<div class="news-hit-title">{html.escape(title)}</div>'
+            for title in item.get("matched_titles", [])
+        )
+        cards.append(
+            f"""
+            <div class="news-hit-card">
+              <div>
+                <strong>{html.escape(item.get("name", ""))}</strong>
+                <span class="muted">{html.escape(item.get("ticker", "-"))}</span>
+              </div>
+              <div class="stock-change" style="color:{change_color};">{change_text}</div>
+              {headlines}
+            </div>
+            """
+        )
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">ニュースに出た銘柄</div>
+      <div class="muted">{html.escape(note)}</div>
+      {''.join(cards)}
+    </section>
     """
 
 
@@ -330,8 +439,9 @@ def run(root: Path) -> None:
     now = datetime.now(JST)
 
     body = (
-        _ai_summary_section(root)
-        + _nikkei_section(root)
+        _nikkei_section(root)
+        + _ai_summary_section(root)
+        + _news_related_gain_section(root)
         + _watchlist_section(root)
         + _dividend_section(root)
     )
@@ -366,12 +476,17 @@ def run(root: Path) -> None:
     .ai-block-title {{ margin-bottom:6px; font-size:13px; font-weight:bold; color:#111827; }}
     .ai-emphasis {{ font-weight:bold; color:#111827; background:#fef3c7; padding:0 2px; border-radius:3px; }}
     .change {{ margin-top:8px; font-size:18px; font-weight:bold; }}
-    .stock-name {{ display:block; font-size:15px; line-height:1.25; }}
-    .stock-card {{ margin-top:9px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
-    .mini-table {{ width:100%; margin:0; border-collapse:collapse; }}
-    .mini-table td {{ border:0; padding:0; vertical-align:top; }}
-    .stock-price {{ width:35%; white-space:nowrap; font-size:14px; font-weight:bold; text-align:right; }}
-    .stock-change {{ margin-top:6px; font-size:14px; font-weight:bold; }}
+    .stock-grid {{ width:100%; margin-top:8px; border-collapse:separate; border-spacing:6px 8px; table-layout:fixed; }}
+    .stock-grid-cell {{ width:50%; padding:0; border:0; vertical-align:top; }}
+    .stock-name {{ display:block; min-height:34px; font-size:13px; line-height:1.3; overflow-wrap:anywhere; }}
+    .stock-card {{ min-height:144px; padding:9px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .stock-price {{ margin-top:8px; white-space:nowrap; font-size:14px; font-weight:bold; }}
+    .stock-change {{ margin-top:5px; font-size:13px; font-weight:bold; line-height:1.25; }}
+    .stock-trend {{ margin-top:4px; color:#64748b; font-size:11px; line-height:1.25; font-weight:normal; }}
+    .stock-trend span {{ display:block; }}
+    .stock-trend strong {{ display:block; font-size:11px; }}
+    .news-hit-card {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .news-hit-title {{ margin-top:7px; color:#334155; font-size:12px; line-height:1.45; font-weight:normal; }}
     .muted {{ margin-top:3px; color:#6b7280; font-size:12px; font-weight:normal; }}
     .badge {{ display:inline-block; padding:3px 7px; border-radius:6px; color:#ffffff; font-size:12px; font-weight:bold; white-space:nowrap; }}
     .dividend-item {{ margin-top:12px; padding:11px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px; }}

@@ -1,5 +1,5 @@
 {
-  "batch_schedule": ["00:00", "07:00", "12:15"],
+  "batch_schedule": ["07:00", "09:30", "12:15", "22:45"],
   "batch_window_minutes": 14,
   "modules": {
     "stock_nikkei": true,
@@ -7,6 +7,7 @@
     "stock_sector": false,
     "stock_dividend": true,
     "market_news": true,
+    "news_movers": true,
     "ai_summary": true,
     "report_html": true,
     "mail_gmail": true
@@ -16,20 +17,60 @@
     "model": "gemini-3.5-flash"
   },
   "market_news": {
-    "queries": [
-      "日本株 前場 日経平均 TOPIX",
-      "東京株式 前引け 日経平均",
-      "東証 前場 セクター 業種別",
-      "日本株 材料株 前場 上昇 下落",
-      "東京市場 前場 値上がり 値下がり 銘柄"
+    "sources": [
+      {
+        "name": "Google News",
+        "queries": [
+          "日本株 ニュース",
+          "東京株式市場 ニュース",
+          "東証 銘柄 材料",
+          "日本株 セクター 業種",
+          "日本株 レーティング 目標株価"
+        ]
+      },
+      {
+        "name": "株探",
+        "queries": [
+          "site:kabutan.jp 日本株 ニュース",
+          "site:kabutan.jp 東京市場 材料株",
+          "site:kabutan.jp レーティング 目標株価 日本株"
+        ]
+      },
+      {
+        "name": "Reuters",
+        "queries": [
+          "site:jp.reuters.com 日本株 東京市場",
+          "site:jp.reuters.com 東京株式市場",
+          "site:jp.reuters.com 日本株 セクター 銘柄"
+        ]
+      }
     ],
-    "max_items": 10,
-    "lookback_hours": 18
+    "queries": [
+      "日本株 ニュース",
+      "東京株式市場 ニュース",
+      "東証 銘柄 材料",
+      "日本株 セクター 業種",
+      "日本株 レーティング 目標株価"
+    ],
+    "max_items": 24,
+    "per_source_limit": 8,
+    "lookback_hours": 18,
+    "exclude_title_keywords": [
+      "米国株個別",
+      "米国株",
+      "ダウ先物",
+      "ＮＹ株",
+      "NY株"
+    ]
+  },
+  "news_movers": {
+    "data_file": "data/data_j.csv",
+    "alias_file": "data/data_j_aliases.json",
+    "max_tickers": 12,
+    "min_name_length": 4
   },
   "watchlist": {
     "tickers": [
-      {"ticker": "7203.T", "name": "トヨタ自動車"},
-      {"ticker": "9983.T", "name": "ファーストリテイリング"},
       {"ticker": "8035.T", "name": "東京エレクトロン"},
       {"ticker": "1570.T", "name": "NEXT FUNDS 日経平均レバレッジ"},
       {"ticker": "3436.T", "name": "SUMCO"},
@@ -40,7 +81,6 @@
       {"ticker": "5401.T", "name": "日本製鉄"},
       {"ticker": "6613.T", "name": "QDレーザ"},
       {"ticker": "7013.T", "name": "IHI"},
-      {"ticker": "6981.T", "name": "村田製作所"},
       {"ticker": "5803.T", "name": "フジクラ"},
       {"ticker": "AAPL", "name": "アップル"},
       {"ticker": "NVDA", "name": "エヌビディア"}

@@ -42,7 +42,7 @@ def _parse_datetime(value: str) -> datetime | None:
     return parsed.astimezone(JST)
 
 
-def _fetch_google_news(query: str) -> list[dict]:
+def _fetch_google_news(query: str, source_group: str) -> list[dict]:
     params = urllib.parse.urlencode(
         {
             "q": query,
@@ -69,6 +69,8 @@ def _fetch_google_news(query: str) -> list[dict]:
         items.append(
             {
                 "query": query,
+                "source_group": source_group,
+                "collector": "google_news",
                 "title": item.findtext("title", "").strip(),
                 "url": item.findtext("link", "").strip(),
                 "source": source.text.strip() if source is not None and source.text else "",
@@ -90,6 +92,39 @@ def _dedupe(items: list[dict]) -> list[dict]:
     return deduped
 
 
+def _is_excluded(item: dict, exclude_title_keywords: list[str]) -> bool:
+    title = item.get("title") or ""
+    return any(keyword and keyword in title for keyword in exclude_title_keywords)
+
+
+def _news_sources(config: dict) -> list[dict]:
+    sources = config.get("sources")
+    if isinstance(sources, list) and sources:
+        normalized = []
+        for index, source in enumerate(sources, start=1):
+            if not isinstance(source, dict):
+                continue
+            queries = source.get("queries") or []
+            if not isinstance(queries, list):
+                continue
+            normalized.append(
+                {
+                    "name": str(source.get("name") or f"source_{index}"),
+                    "queries": [str(query) for query in queries if str(query).strip()],
+                }
+            )
+        if normalized:
+            return normalized
+
+    queries = config.get("queries") or DEFAULT_QUERIES
+    return [
+        {
+            "name": "Google News",
+            "queries": [str(query) for query in queries if str(query).strip()],
+        }
+    ]
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -97,19 +132,39 @@ def run(root: Path) -> None:
     generated_at = datetime.now(JST).isoformat()
 
     config = _load_config(root).get("market_news", {})
-    queries = config.get("queries") or DEFAULT_QUERIES
+    sources = _news_sources(config)
     max_items = int(config.get("max_items", 8))
+    per_source_limit = int(config.get("per_source_limit", max_items))
     lookback_hours = int(config.get("lookback_hours", 18))
+    exclude_title_keywords = [
+        str(keyword)
+        for keyword in config.get("exclude_title_keywords", [])
+        if str(keyword).strip()
+    ]
     cutoff = datetime.now(JST) - timedelta(hours=lookback_hours)
 
     all_items = []
     warnings = []
-    for query in queries:
-        try:
-            all_items.extend(_fetch_google_news(str(query)))
-        except Exception as exc:
-            warnings.append(f"{query}: {exc}")
-            logging.error("[market_news] fetch failed for query '%s': %s", query, exc)
+    for source in sources:
+        source_items = []
+        source_name = source["name"]
+        for query in source["queries"]:
+            try:
+                source_items.extend(_fetch_google_news(query, source_name))
+            except Exception as exc:
+                warnings.append(f"{source_name} / {query}: {exc}")
+                logging.error(
+                    "[market_news] fetch failed for source '%s' query '%s': %s",
+                    source_name,
+                    query,
+                    exc,
+                )
+        source_items = [
+            item for item in _dedupe(source_items)
+            if not _is_excluded(item, exclude_title_keywords)
+        ]
+        source_items.sort(key=lambda item: item.get("published_at") or "", reverse=True)
+        all_items.extend(source_items[:per_source_limit])
 
     recent_items = []
     for item in _dedupe(all_items):
@@ -133,6 +188,7 @@ def run(root: Path) -> None:
             "module": "market_news",
             "generated_at": generated_at,
             "status": "ok",
+            "source_count": len(sources),
             "data": recent_items,
         }
         if warnings:

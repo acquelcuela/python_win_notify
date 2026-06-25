@@ -58,6 +58,22 @@ def _fetch_target(target: dict) -> dict:
     prev_close = float(previous["Close"])
     change = close - prev_close
     change_pct = (change / prev_close * 100) if prev_close else 0.0
+    multi_day_changes = []
+    for days_back in (2, 3):
+        if len(hist) <= days_back:
+            continue
+        base = float(hist["Close"].iloc[-(days_back + 1)])
+        base_change = close - base
+        base_change_pct = (base_change / base * 100) if base else 0.0
+        multi_day_changes.append(
+            {
+                "days_back": days_back,
+                "label": f"{days_back}営業日前比",
+                "base_close": round(base, 2),
+                "change": round(base_change, 2),
+                "change_pct": round(base_change_pct, 2),
+            }
+        )
 
     info = {}
     try:
@@ -76,6 +92,7 @@ def _fetch_target(target: dict) -> dict:
         "low": round(float(latest["Low"]), 2),
         "change": round(change, 2),
         "change_pct": round(change_pct, 2),
+        "multi_day_changes": multi_day_changes,
         "volume": int(latest["Volume"]) if "Volume" in latest else None,
     }
 

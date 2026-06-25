@@ -50,6 +50,7 @@ def _news_payload(root: Path) -> dict | None:
             {
                 "title": item.get("title"),
                 "source": item.get("source"),
+                "source_group": item.get("source_group"),
                 "published_at": item.get("published_at"),
                 "query": item.get("query"),
             }
@@ -81,15 +82,18 @@ def _build_market_prompt(payload: dict) -> str:
 以下のJSONだけを根拠に、「ユーザー指定銘柄と市場データからの考察」を作ってください。
 
 対象:
-- 日経225先物
+- 日経平均
 - TOPIX連動ETF 1306.T
+- 日経225先物と日経平均の差
 - japan_watchlist に含まれる日本株のみ
 
 前提:
 - 日経225先物は夜間の動きを含みやすい参考データです。
+- AI考察では、通常の日本株市場比較は日経平均とTOPIX連動ETFを使ってください。
+- 日経225先物は、日経平均と比べた先物側の強弱を見るための補助情報として扱ってください。
 - TOPIXはTOPIX連動ETF 1306.T を代理指標として使っています。
 - TOPIX連動ETFは前営業日の日中取引データであり、夜間取引の結果ではありません。
-- 日経225先物とTOPIX連動ETFの比較は、厳密な同時間比較ではありません。
+- 日経225先物とTOPIX連動ETFを直接比較しないでください。
 - 投資助言ではなく、状況整理として書いてください。
 - 米国株、RYLD、SDIV、ニュース見出しには触れないでください。
 
@@ -107,11 +111,11 @@ JSON:
 
 def _build_news_prompt(payload: dict) -> str:
     return f"""
-あなたは日本株ニュースの前場メモを書くアシスタントです。
+あなたは日本株ニュースの要点メモを書くアシスタントです。
 以下のニュース見出しJSONだけを根拠に、「ニュースから見える日本株の動向」を作ってください。
 
 対象:
-- 日本株の前場ニュース
+- 日本株に関するニュース全般
 - セクター、業種、テーマ、材料株
 - 上がった/下がった/動いた銘柄やテーマ
 
@@ -124,6 +128,7 @@ def _build_news_prompt(payload: dict) -> str:
 - 日本語。
 - 3〜5行。
 - ニュース見出しから読める範囲で、セクターや銘柄の動向を整理する。
+- 日経平均やTOPIXの見出しだけに寄せず、個別材料・セクター・レーティングも拾う。
 - 不明なことは推測しすぎない。
 - HTMLタグは使わない。
 

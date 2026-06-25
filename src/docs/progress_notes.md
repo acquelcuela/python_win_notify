@@ -235,11 +235,24 @@ settings. After implementation, this was changed intentionally:
 - This makes normal behavior changes reviewable in git and safer for AI-assisted
   edits because secrets are not mixed with runtime switches.
 
-The original drafts also mentioned a `06:30` run time. After scheduler setup and
-manual operation checks, the active windows were changed to:
+The original drafts also mentioned a `06:30` run time. After scheduler setup,
+manual operation checks, and market-timing review, the active windows were
+changed to:
 
-- `00:00-00:14`
 - `07:00-07:14`
+- `09:30-09:44`
+- `12:15-12:29`
+- `22:45-22:59`
+
+The intent is:
+
+- `07:00`: check the final overnight Nikkei futures result before the Japanese
+  market opens.
+- `09:30`: check early Tokyo-market news and opening-session movement after the
+  market has started.
+- `12:15`: check morning-session Japanese stock news and movement.
+- `22:45`: check evening news and Nikkei futures shortly after the US market
+  opens during daylight saving time.
 
 The task itself still starts every 15 minutes. `main.py` decides whether the
 current start is inside an active window. This keeps Task Scheduler simple while
@@ -304,20 +317,32 @@ Purpose:
 - Track configured tickers from `config.json` `watchlist.tickers`.
 - Fetch the latest daily OHLCV data with yfinance.
 - Calculate the change and percentage change from the previous trading day.
+- Calculate additional movement versus two and three trading days ago from the
+  same 10-day yfinance history. This does not add extra API calls.
 - Sort the report by `change_pct` descending so the strongest names appear
   first.
 - Continue when individual tickers fail and show those failures as warnings in
   the HTML report.
 - Display watchlist results separately for Japanese stocks and US stocks.
+- Display watchlist cards in a two-column mobile-mail layout.
+- Show each card's previous-day change, two-trading-day change, and
+  three-trading-day change with green/red coloring.
 - Prefer configured Japanese/Katakana names over yfinance English names so the
   report is easier to scan in mail.
 
-The first configured list is:
+The configured list has been narrowed to the current watch targets:
 
-- `7203.T`
-- `9983.T`
 - `8035.T`
 - `1570.T`
+- `3436.T`
+- `200A.T`
+- `7762.T`
+- `6976.T`
+- `5016.T`
+- `5401.T`
+- `6613.T`
+- `7013.T`
+- `5803.T`
 - `AAPL`
 - `NVDA`
 
@@ -329,6 +354,10 @@ the HTML mail.
 Important premise passed to Gemini:
 
 - Nikkei 225 futures can include overnight movement.
+- The normal Japanese market comparison should use the Nikkei average and TOPIX,
+  not Nikkei 225 futures versus TOPIX.
+- Nikkei 225 futures should be compared with the Nikkei average as supplemental
+  context for overnight/futures-side strength.
 - TOPIX is represented by the TOPIX-linked ETF `1306.T`.
 - `1306.T` is previous business day's regular Tokyo market data, not overnight
   TOPIX futures data.
@@ -345,14 +374,45 @@ A `12:15` active window was added for a midday report after the Japanese market
 morning session.
 
 `market_news` fetches Google News RSS search results before `ai_summary` runs.
-The default searches focus on:
+The default searches use three source groups and keep up to 24 recent items:
 
-- Japanese stocks morning session
-- Tokyo market morning close
-- Nikkei average and TOPIX related movement
-- Japanese market sectors, themes, movers, gainers, and decliners
+- Broad Google News searches
+- Kabutan-focused Google News searches
+- Reuters-focused Google News searches
+
+The searches focus on:
+
+- Japanese stock news broadly
+- Tokyo stock market news
+- Individual stock catalysts and disclosures
+- Sector, industry, theme, rating, and target-price related news
 
 The collected headlines are passed to Gemini so the AI summary can mention
-public morning-session news context. News links are not shown in the mail body;
+public Japanese-stock news context. News links are not shown in the mail body;
 the mail should contain the AI-written summary of sectors, themes, and notable
 Japanese stock moves instead.
+
+## News Movers Module
+
+`news_movers` was added after `market_news`.
+
+Purpose:
+
+- Use `src/data/data_j.csv` as the listed-company dictionary.
+- Use `src/data/data_j_aliases.json` as a small local alias dictionary for
+  abbreviated names such as `東エレク` or `キオクシアHD`.
+- Match news headlines against the CSV `銘柄名` and configured aliases by simple
+  containment.
+- Do not apply spelling-variation correction for now.
+- Convert the CSV into `src/.cache/listed_companies.json` at runtime so normal
+  processing can use a simple JSON dictionary.
+- Fetch matched tickers with yfinance and write `output/news_movers.json`.
+- Show matched movers from this output in the HTML mail as `ニュースに出た銘柄`.
+- Show both rising and falling matched stocks, colored by price movement.
+
+Noise control:
+
+- The match uses company names only, not numeric codes.
+- Very short company names are skipped by `news_movers.min_name_length`.
+- The match requires a basic text boundary around the company name so names such
+  as `ニックス` do not match inside `ＳＫハイニックス`.

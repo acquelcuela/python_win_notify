@@ -23,15 +23,19 @@ Recommended `config.json` settings:
 
 ```json
 {
-  "batch_schedule": ["00:00", "07:00", "12:15"],
+  "batch_schedule": ["07:00", "09:30", "12:15", "22:45"],
   "batch_window_minutes": 14
 }
 ```
 
 With this setting:
 
-- `00:00-00:14` runs the midnight batch.
-- `07:00-07:14` runs the morning batch.
+- `07:00-07:14` checks the final overnight futures result before the Japanese
+  market opens.
+- `09:30-09:44` checks early Tokyo-market news and opening-session movement.
+- `12:15-12:29` checks morning-session Japanese stock news and movement.
+- `22:45-22:59` checks evening news and futures shortly after the US market
+  opens during daylight saving time.
 - Other 15-minute starts only log a skip.
 
 ## File Layout
@@ -97,7 +101,17 @@ Entry point for Windows Task Scheduler. It writes a task-kick log and then runs
 
 `modules\stock_nikkei.py`
 
-Fetches Nikkei 225 futures data from Yahoo Finance with `yfinance`.
+Fetches market overview data from Yahoo Finance with `yfinance`.
+
+Current targets:
+
+- Nikkei 225 futures: `NKD=F`
+- Nikkei average: `^N225`
+- TOPIX proxy: TOPIX-linked ETF `1306.T`
+
+The normal market comparison uses Nikkei average versus TOPIX proxy. Nikkei 225
+futures are treated as supplemental context and compared with the Nikkei average,
+because futures can include overnight movement.
 
 Output:
 
@@ -109,6 +123,17 @@ output\stock_nikkei.json
 
 Reads module output files and generates the HTML report.
 
+The HTML mail is optimized for smartphone mail apps. Main display rules:
+
+- Show `日経平均 / TOPIX 市場概況` first.
+- In the market section, show cards in this order: Nikkei average, Nikkei 225
+  futures, TOPIX-linked ETF.
+- Show AI summaries after the market numbers.
+- Show `news_movers` matches as `ニュースに出た銘柄`, including both rising
+  and falling stocks.
+- Show watchlist cards in two columns, with previous-day, two-trading-day, and
+  three-trading-day changes colored green/red.
+
 Output:
 
 ```text
@@ -118,7 +143,14 @@ output\report.html
 `modules\stock_watchlist.py`
 
 Fetches configured watchlist tickers with yfinance and calculates each ticker's
-latest daily change.
+latest daily change. The module requests a 10-day daily history per ticker and
+derives these values from the same response:
+
+- Previous trading-day change
+- Two-trading-day change
+- Three-trading-day change
+
+The additional multi-day values do not add more yfinance calls.
 
 Output:
 
@@ -136,6 +168,37 @@ Output:
 
 ```text
 output\stock_dividend.json
+```
+
+`modules\market_news.py`
+
+Fetches Japanese stock-related headlines through Google News RSS search groups.
+
+Output:
+
+```text
+output\market_news.json
+```
+
+`modules\news_movers.py`
+
+Matches `output\market_news.json` headlines against `src\data\data_j.csv`
+company names and `src\data\data_j_aliases.json` aliases, converts the CSV to
+`src\.cache\listed_companies.json` at runtime, fetches matched ticker prices
+with yfinance, and writes matched movers.
+
+`src\data\data_j.csv` is a committed project dictionary file. The converted
+`src\.cache\listed_companies.json` file is runtime cache and is not committed.
+`src\data\data_j_aliases.json` is a committed local supplement for abbreviations.
+Matching intentionally uses simple company-name or alias containment without
+spelling-variation correction. Very short company names are skipped by
+`news_movers.min_name_length`, and a basic text-boundary check reduces false
+matches inside longer company names.
+
+Output:
+
+```text
+output\news_movers.json
 ```
 
 `modules\mail_gmail.py`
@@ -160,11 +223,13 @@ password.
 ```text
 stock_nikkei
 stock_watchlist
-    stock_sector
-    stock_dividend
-    ai_summary
-    report_html
-    mail_gmail
+stock_sector
+stock_dividend
+market_news
+news_movers
+ai_summary
+report_html
+mail_gmail
 ```
 
 Currently implemented:
@@ -172,6 +237,8 @@ Currently implemented:
 - `stock_nikkei`
 - `stock_watchlist`
 - `stock_dividend`
+- `market_news`
+- `news_movers`
 - `ai_summary`
 - `report_html`
 - `mail_gmail`
@@ -191,7 +258,7 @@ Current structure:
 
 ```json
 {
-  "batch_schedule": ["00:00", "07:00"],
+  "batch_schedule": ["07:00", "09:30", "12:15", "22:45"],
   "batch_window_minutes": 14,
   "modules": {
     "stock_nikkei": true,
@@ -199,6 +266,7 @@ Current structure:
     "stock_sector": false,
     "stock_dividend": true,
     "market_news": true,
+    "news_movers": true,
     "ai_summary": true,
     "report_html": true,
     "mail_gmail": true
@@ -208,24 +276,59 @@ Current structure:
     "model": "gemini-3.5-flash"
   },
   "market_news": {
-    "queries": [
-      "日本株 前場 日経平均 TOPIX",
-      "東京株式 前引け 日経平均",
-      "東証 前場 セクター 業種別",
-      "日本株 材料株 前場 上昇 下落",
-      "東京市場 前場 値上がり 値下がり 銘柄"
+    "sources": [
+      {
+        "name": "Google News",
+        "queries": ["日本株 ニュース"]
+      },
+      {
+        "name": "株探",
+        "queries": ["site:kabutan.jp 日本株 ニュース"]
+      },
+      {
+        "name": "Reuters",
+        "queries": ["site:jp.reuters.com 日本株 東京市場"]
+      }
     ],
-    "max_items": 10,
-    "lookback_hours": 18
+    "queries": [
+      "日本株 ニュース",
+      "東京株式市場 ニュース",
+      "東証 銘柄 材料",
+      "日本株 セクター 業種",
+      "日本株 レーティング 目標株価"
+    ],
+    "max_items": 24,
+    "per_source_limit": 8,
+    "lookback_hours": 18,
+    "exclude_title_keywords": [
+      "米国株個別",
+      "米国株",
+      "ダウ先物",
+      "ＮＹ株",
+      "NY株"
+    ]
+  },
+  "news_movers": {
+    "data_file": "data/data_j.csv",
+    "alias_file": "data/data_j_aliases.json",
+    "max_tickers": 12,
+    "min_name_length": 4
   },
   "watchlist": {
     "tickers": [
-      {"ticker": "7203.T", "name": "Toyota Motor"},
-      {"ticker": "9983.T", "name": "Fast Retailing"},
-      {"ticker": "8035.T", "name": "Tokyo Electron"},
-      {"ticker": "1570.T", "name": "Nikkei 225 Leveraged ETF"},
-      {"ticker": "AAPL", "name": "Apple"},
-      {"ticker": "NVDA", "name": "NVIDIA"}
+      {"ticker": "8035.T", "name": "東京エレクトロン"},
+      {"ticker": "1570.T", "name": "NEXT FUNDS 日経平均レバレッジ"},
+      {"ticker": "3436.T", "name": "SUMCO"},
+      {"ticker": "200A.T", "name": "NF日経半導体株"},
+      {"ticker": "7762.T", "name": "シチズン時計"},
+      {"ticker": "6976.T", "name": "太陽誘電"},
+      {"ticker": "5016.T", "name": "JX金属"},
+      {"ticker": "5401.T", "name": "日本製鉄"},
+      {"ticker": "6613.T", "name": "QDレーザ"},
+      {"ticker": "7013.T", "name": "IHI"},
+      {"ticker": "5803.T", "name": "フジクラ"},
+      {"ticker": "AAPL", "name": "アップル"},
+      {"ticker": "NVDA", "name": "エヌビディア"}
     ]
   },
   "dividend_schedule": {
