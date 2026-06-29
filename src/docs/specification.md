@@ -273,7 +273,7 @@ Current structure:
   },
   "ai_summary": {
     "provider": "gemini",
-    "model": "gemini-3.5-flash"
+    "model": "gemini-3.1-flash-lite"
   },
   "market_news": {
     "sources": [

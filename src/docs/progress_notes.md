@@ -368,6 +368,10 @@ The module reads `GEMINI_API_KEY` from `.env`. If the key is missing or the API
 call fails, the batch still continues and the report is generated without the AI
 summary.
 
+The AI model was switched from `gemini-3.5-flash` to
+`gemini-3.1-flash-lite` to test lower daily running cost. If summary quality is
+not sufficient, the model can be changed back in `config.json`.
+
 ## Midday Market News
 
 A `12:15` active window was added for a midday report after the Japanese market

@@ -14,7 +14,7 @@
   },
   "ai_summary": {
     "provider": "gemini",
-    "model": "gemini-3.5-flash"
+    "model": "gemini-3.1-flash-lite"
   },
   "market_news": {
     "sources": [
@@ -75,6 +75,9 @@
       {"ticker": "1570.T", "name": "NEXT FUNDS 日経平均レバレッジ"},
       {"ticker": "3436.T", "name": "SUMCO"},
       {"ticker": "200A.T", "name": "NF日経半導体株"},
+      {"ticker": "2962.T", "name": "テクニスコ"},
+      {"ticker": "4323.T", "name": "日本システム技術"},
+      {"ticker": "3661.T", "name": "エムアップホールディングス"},
       {"ticker": "7762.T", "name": "シチズン時計"},
       {"ticker": "6976.T", "name": "太陽誘電"},
       {"ticker": "5016.T", "name": "JX金属"},

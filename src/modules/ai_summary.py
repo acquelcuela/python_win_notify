@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 JST = timezone(timedelta(hours=9), "JST")
-DEFAULT_MODEL = "gemini-3.5-flash"
+DEFAULT_MODEL = "gemini-3.1-flash-lite"
 API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
