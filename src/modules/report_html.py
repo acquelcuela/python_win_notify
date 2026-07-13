@@ -1,7 +1,8 @@
-import csv
+﻿import csv
 import html
 import json
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -32,12 +33,12 @@ def _fmt_change(change, change_pct) -> tuple[str, str]:
 
 def _change_state(change) -> tuple[str, str]:
     if change is None:
-        return "flat", "前日比: 不明"
+        return "flat", "横ばい"
     if change > 0:
-        return "up", "前日比: 上昇"
+        return "up", "上昇"
     if change < 0:
-        return "down", "前日比: 下落"
-    return "flat", "前日比: 横ばい"
+        return "down", "下落"
+    return "flat", "flat"
 
 
 def _load_json(path: Path) -> dict | None:
@@ -53,11 +54,11 @@ def _data_alias_terms(root: Path, text: str) -> list[str]:
         with data_path.open(encoding="utf-8", newline="") as file:
             rows = csv.reader(file)
             first = next(rows, None)
-            headers = next(rows, None) if first == ["表1"] else first
+            headers = next(rows, None) if first == ["陦ｨ1"] else first
             if headers:
                 reader = csv.DictReader(file, fieldnames=headers)
                 for row in reader:
-                    name = str(row.get("銘柄名") or "").strip()
+                    name = str(row.get("name") or row.get("銘柄名") or "").strip()
                     if len(name) >= 4 and name in text and name not in terms:
                         terms.append(name)
 
@@ -91,7 +92,17 @@ def _ai_highlight_terms(root: Path, text: str = "") -> list[str]:
     for value in _data_alias_terms(root, text):
         if value not in terms:
             terms.append(value)
-    extra_terms = ["日経225先物", "TOPIX連動ETF", "日経平均", "TOPIX"]
+    extra_terms = [
+        "ニュースからの考察",
+        "カカクコム",
+        "LINEヤフー",
+        "ispace",
+        "JX金属",
+        "日経225先物",
+        "TOPIX連動ETF",
+        "日経平均",
+        "TOPIX",
+    ]
     for value in extra_terms:
         if value not in terms:
             terms.append(value)
@@ -183,10 +194,10 @@ def _nikkei_section(root: Path) -> str:
           <div class="index-current">{_fmt_decimal(item.get("current"))}</div>
           <div class="change" style="color:{change_color};">{change_text}</div>
           <table>
-            <tr><th>始値</th><td>{_fmt_decimal(item.get("open"))}</td></tr>
-            <tr><th>高値</th><td>{_fmt_decimal(item.get("high"))}</td></tr>
-            <tr><th>安値</th><td>{_fmt_decimal(item.get("low"))}</td></tr>
-            <tr><th>前回終値</th><td>{_fmt_decimal(item.get("prev_close"))}</td></tr>
+            <tr><th>蟋句､</th><td>{_fmt_decimal(item.get("open"))}</td></tr>
+            <tr><th>鬮伜､</th><td>{_fmt_decimal(item.get("high"))}</td></tr>
+            <tr><th>螳牙､</th><td>{_fmt_decimal(item.get("low"))}</td></tr>
+            <tr><th>蜑榊屓邨ょ､</th><td>{_fmt_decimal(item.get("prev_close"))}</td></tr>
           </table>
         </div>
         """
@@ -216,31 +227,6 @@ def _nikkei_section(root: Path) -> str:
       </table>
     """
 
-    comparisons = data.get("comparisons") or {}
-    market_comparison = comparisons.get("nikkei_average_vs_topix") or data.get("comparison") or {}
-    futures_comparison = comparisons.get("nikkei_futures_vs_average") or {}
-    comparison_html = ""
-    if market_comparison:
-        diff = market_comparison.get("diff_pct")
-        diff_text = "-" if diff is None else f"{float(diff):+.2f}pt"
-        comparison_html = f"""
-        <div class="comparison-box">
-          <strong>日経平均 - TOPIX連動ETF:</strong> {html.escape(diff_text)}
-          <div>{html.escape(market_comparison.get("summary", ""))}</div>
-          <div class="muted">注: TOPIX連動ETFは前営業日の日中取引データです。夜間取引の結果ではありません。</div>
-        </div>
-        """
-    if futures_comparison:
-        diff = futures_comparison.get("diff_pct")
-        diff_text = "-" if diff is None else f"{float(diff):+.2f}pt"
-        comparison_html += f"""
-        <div class="comparison-box">
-          <strong>日経225先物 - 日経平均:</strong> {html.escape(diff_text)}
-          <div>{html.escape(futures_comparison.get("summary", ""))}</div>
-          <div class="muted">注: 先物は夜間の動きを含むため、通常の日経平均とは時間軸が異なる参考比較です。</div>
-        </div>
-        """
-
     warnings = ""
     if payload.get("warnings"):
         warning_items = "".join(f"<li>{html.escape(item)}</li>" for item in payload["warnings"])
@@ -253,7 +239,6 @@ def _nikkei_section(root: Path) -> str:
         <div class="state-label">{change_label}</div>
       </div>
       {index_grid}
-      {comparison_html}
       {warnings}
     </section>
     """
@@ -264,7 +249,8 @@ def _watchlist_cards(items: list[dict]) -> str:
     for item in items:
         change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
         trend_rows = []
-        for trend in item.get("multi_day_changes") or []:
+        # 先頭の履歴は大きく表示している当日変化と重なるので除外する
+        for trend in (item.get("daily_changes") or [])[1:]:
             trend_text, trend_color = _fmt_change(trend.get("change"), trend.get("change_pct", 0))
             trend_rows.append(
                 f"""
@@ -318,10 +304,21 @@ def _news_matched_terms(item: dict) -> list[str]:
 
 def _news_related_gain_section(root: Path) -> str:
     movers = _load_json(root / "output" / "news_movers.json")
-    if movers and movers.get("status") == "ok" and movers.get("data"):
-        matches = movers["data"]
-        if matches:
-            return _news_related_gain_cards(matches, "CSV銘柄一覧・略称マスターとニュース見出しを照合した銘柄です。上昇・下落の両方を表示します。")
+    if movers and movers.get("status") == "ok":
+        matches = movers.get("data") or []
+        failures = movers.get("failed_matches") or []
+        if matches or failures:
+            parts = []
+            if matches:
+                parts.append(
+                    _news_related_gain_cards(
+                        matches,
+                        "CSV銘柄一覧・略称マスターとニュース見出しを照合した銘柄です。上昇・下落の両方を表示します。",
+                    )
+                )
+            if failures:
+                parts.append(_news_related_failures_section(failures))
+            return "".join(parts)
 
     watchlist = _load_json(root / "output" / "stock_watchlist.json")
     news = _load_json(root / "output" / "market_news.json")
@@ -376,6 +373,36 @@ def _news_related_gain_cards(matches: list[dict], note: str) -> str:
     <section class="panel">
       <div class="section-title">ニュースに出た銘柄</div>
       <div class="muted">{html.escape(note)}</div>
+      {''.join(cards)}
+    </section>
+    """
+
+
+def _news_related_failures_section(matches: list[dict]) -> str:
+    cards = []
+    for item in matches:
+        headlines = "".join(
+            f'<div class="news-hit-title">{html.escape(title)}</div>'
+            for title in item.get("matched_titles", [])
+        )
+        cards.append(
+            f"""
+            <div class="news-hit-card">
+              <div>
+                <strong>{html.escape(item.get("name", ""))}</strong>
+                <span class="muted">{html.escape(item.get("ticker", "-"))}</span>
+              </div>
+              <div class="muted">萓｡譬ｼ蜿門ｾ怜､ｱ謨・/div>
+              <div class="news-hit-title">{html.escape(item.get("error", "-"))}</div>
+              {headlines}
+            </div>
+            """
+        )
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">ニュースに出たが取得できなかった銘柄</div>
+      <div class="muted">yfinance の取得失敗やデータ欠損があった銘柄です。</div>
       {''.join(cards)}
     </section>
     """
@@ -488,6 +515,49 @@ def _dividend_section(root: Path) -> str:
     """
 
 
+def _stock_x_trends_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "stock_x_trends.json")
+    if not payload or payload.get("status") != "ok" or not payload.get("data"):
+        return ""
+
+    schedule_key = os.getenv("BATCH_SCHEDULE_KEY", "").strip()
+    if schedule_key and schedule_key != "07:00":
+        return ""
+
+    data = payload["data"]
+    keywords = data.get("common_keywords") or data.get("trending_keywords") or []
+    stock_findings = data.get("stock_findings") or []
+    theme_findings = data.get("theme_findings") or data.get("discovery_findings") or data.get("notable_posts") or []
+    keyword_html = "".join(
+        f'<span class="keyword-chip">{html.escape(str(value))}</span>' for value in keywords
+    )
+    finding_html = ""
+    for item in stock_findings + theme_findings:
+        name = str(item.get("name") or "").strip()
+        ticker = str(item.get("ticker") or "").strip()
+        header = name or ticker or "-"
+        code_line = f"{ticker} / " if ticker else ""
+        finding_html += f"""
+        <div class="news-hit-card">
+          <div class="news-hit-title"><strong>{html.escape(header)}</strong></div>
+          <div class="muted">{html.escape(code_line)}{html.escape(str(item.get("sentiment") or "-"))}</div>
+          <div class="news-hit-title">{html.escape(str(item.get("reason") or "-"))}</div>
+          <div class="muted">{html.escape(str(item.get("detail") or item.get("source") or "-"))}</div>
+        </div>
+        """
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">Xトレンド銘柄</div>
+      <div class="muted">生成時刻: {html.escape(payload.get("generated_at", "-"))}</div>
+      <h3>共通キーワード</h3>
+      <div style="margin-top:8px;">{keyword_html}</div>
+      <h3>銘柄別結果</h3>
+      {finding_html}
+    </section>
+    """
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -500,6 +570,7 @@ def run(root: Path) -> None:
         + _news_related_gain_section(root)
         + _watchlist_section(root)
         + _dividend_section(root)
+        + _stock_x_trends_section(root)
     )
     document = f"""<!doctype html>
 <html lang="ja">
@@ -509,16 +580,16 @@ def run(root: Path) -> None:
   <title>NightlyBatchNotify - {now.strftime("%Y-%m-%d")}</title>
   <style>
     body {{ margin:0; padding:0; background:#f3f4f6; color:#111827; font-family:Arial, sans-serif; }}
-    .wrap {{ max-width:430px; margin:0 auto; background:#ffffff; }}
+    .wrap {{ width:100%; max-width:560px; margin:0 auto; background:#ffffff; }}
     header {{ padding:18px 16px; background:#111827; color:#ffffff; }}
     header h1 {{ margin:0; font-size:20px; }}
     header p {{ margin:8px 0 0; color:#d1d5db; font-size:13px; }}
-    main {{ padding:14px 12px; }}
+    main {{ padding:12px 10px; }}
     .panel {{ border:1px solid #d1d5db; border-radius:8px; padding:0 12px 14px; margin:0 0 18px; overflow:hidden; }}
     .market-up {{ border-left:6px solid #047857; background:#f0fdf4; }}
     .market-down {{ border-left:6px solid #b91c1c; background:#fef2f2; }}
     .market-flat {{ border-left:6px solid #64748b; background:#f8fafc; }}
-    .section-title {{ margin:0 -12px 16px; padding:12px 14px; background:#111827; color:#ffffff; font-size:16px; font-weight:bold; border-bottom:1px solid #111827; }}
+    .section-title {{ margin:0 -12px 14px; padding:12px 14px; background:#111827; color:#ffffff; font-size:15px; line-height:1.25; font-weight:bold; border-bottom:1px solid #111827; }}
     .section-body {{ padding-top:2px; }}
     h3 {{ margin:18px 0 0; font-size:14px; color:#111827; }}
     .state-label {{ display:inline-block; margin:0 0 12px; padding:5px 8px; border-radius:6px; background:#111827; color:#ffffff; font-size:12px; font-weight:bold; }}
@@ -526,11 +597,11 @@ def run(root: Path) -> None:
     .index-card {{ margin-top:10px; padding:11px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
     .index-head {{ font-size:15px; line-height:1.35; }}
     .index-current {{ margin-top:8px; font-size:28px; font-weight:bold; line-height:1.1; }}
-    .index-grid {{ width:100%; margin-top:6px; border-collapse:separate; border-spacing:5px 0; table-layout:fixed; }}
+    .index-grid {{ width:100%; margin-top:6px; border-collapse:separate; border-spacing:4px 0; table-layout:fixed; }}
     .index-grid-cell {{ width:33.33%; padding:0; border:0; vertical-align:top; }}
-    .index-mini-card {{ min-height:104px; padding:8px 5px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
-    .index-mini-label {{ min-height:32px; font-size:12px; font-weight:bold; line-height:1.25; overflow-wrap:anywhere; }}
-    .index-mini-current {{ margin-top:6px; font-size:16px; font-weight:bold; line-height:1.15; overflow-wrap:anywhere; }}
+    .index-mini-card {{ min-height:96px; padding:8px 6px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .index-mini-label {{ min-height:28px; font-size:12px; font-weight:bold; line-height:1.25; overflow-wrap:anywhere; }}
+    .index-mini-current {{ margin-top:6px; font-size:15px; font-weight:bold; line-height:1.15; overflow-wrap:anywhere; }}
     .index-mini-change {{ margin-top:5px; font-size:11px; font-weight:bold; line-height:1.25; }}
     .comparison-box {{ margin-top:12px; padding:10px; background:#ffffff; border:1px solid #d1d5db; border-radius:8px; font-size:13px; line-height:1.5; }}
     .ai-summary {{ font-size:14px; line-height:1.65; }}
@@ -541,7 +612,7 @@ def run(root: Path) -> None:
     .stock-grid {{ width:100%; margin-top:8px; border-collapse:separate; border-spacing:6px 8px; table-layout:fixed; }}
     .stock-grid-cell {{ width:50%; padding:0; border:0; vertical-align:top; }}
     .stock-name {{ display:block; min-height:34px; font-size:13px; line-height:1.3; overflow-wrap:anywhere; }}
-    .stock-card {{ min-height:144px; padding:9px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .stock-card {{ min-height:132px; padding:9px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
     .stock-price {{ margin-top:8px; white-space:nowrap; font-size:14px; font-weight:bold; }}
     .stock-change {{ margin-top:5px; font-size:13px; font-weight:bold; line-height:1.25; }}
     .stock-trend {{ margin-top:4px; color:#64748b; font-size:11px; line-height:1.25; font-weight:normal; }}
@@ -550,6 +621,7 @@ def run(root: Path) -> None:
     .news-hit-card {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
     .news-hit-price {{ margin-top:7px; font-size:16px; font-weight:bold; line-height:1.15; }}
     .news-hit-title {{ margin-top:7px; color:#334155; font-size:12px; line-height:1.45; font-weight:normal; }}
+    .keyword-chip {{ display:inline-block; margin:0 6px 6px 0; padding:4px 8px; background:#e2e8f0; border-radius:999px; font-size:12px; }}
     .muted {{ margin-top:3px; color:#6b7280; font-size:12px; font-weight:normal; }}
     .badge {{ display:inline-block; padding:3px 7px; border-radius:6px; color:#ffffff; font-size:12px; font-weight:bold; white-space:nowrap; }}
     .dividend-item {{ margin-top:12px; padding:11px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px; }}
@@ -581,3 +653,5 @@ def run(root: Path) -> None:
 """
     output_path.write_text(document, encoding="utf-8")
     logging.info("[report_html] wrote %s", output_path)
+
+

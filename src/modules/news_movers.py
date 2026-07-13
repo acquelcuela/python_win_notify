@@ -261,6 +261,7 @@ def run(root: Path) -> None:
 
     matched = matched[:max_tickers]
     results = []
+    failed_matches = []
     for company in matched:
         try:
             result = _fetch_price(company)
@@ -274,6 +275,14 @@ def run(root: Path) -> None:
             )
         except Exception as exc:
             warnings.append(f"{company['ticker']} {company['name']}: {exc}")
+            failed_matches.append(
+                {
+                    "ticker": company["ticker"],
+                    "name": company["name"],
+                    "matched_titles": company["matched_titles"],
+                    "error": str(exc),
+                }
+            )
             logging.error("[news_movers] %s fetch failed: %s", company["ticker"], exc)
 
     results.sort(key=lambda item: item["change_pct"], reverse=True)
@@ -285,6 +294,7 @@ def run(root: Path) -> None:
         "alias_file": str(alias_file),
         "matched_count": len(matched),
         "data": results,
+        "failed_matches": failed_matches,
     }
     if warnings:
         payload["warnings"] = warnings

@@ -58,20 +58,20 @@ def _fetch_target(target: dict) -> dict:
     prev_close = float(previous["Close"])
     change = close - prev_close
     change_pct = (change / prev_close * 100) if prev_close else 0.0
-    multi_day_changes = []
-    for days_back in (2, 3):
-        if len(hist) <= days_back:
-            continue
-        base = float(hist["Close"].iloc[-(days_back + 1)])
-        base_change = close - base
-        base_change_pct = (base_change / base * 100) if base else 0.0
-        multi_day_changes.append(
+    daily_changes = []
+    closes = hist["Close"].tail(6)
+    for idx in range(len(closes) - 1, 0, -1):
+        current = float(closes.iloc[idx])
+        previous_close = float(closes.iloc[idx - 1])
+        delta = current - previous_close
+        delta_pct = (delta / previous_close * 100) if previous_close else 0.0
+        current_date = closes.index[idx].date().isoformat()
+        previous_date = closes.index[idx - 1].date().isoformat()
+        daily_changes.append(
             {
-                "days_back": days_back,
-                "label": f"{days_back}営業日前比",
-                "base_close": round(base, 2),
-                "change": round(base_change, 2),
-                "change_pct": round(base_change_pct, 2),
+                "label": f"{previous_date} → {current_date}",
+                "change": round(delta, 2),
+                "change_pct": round(delta_pct, 2),
             }
         )
 
@@ -92,7 +92,7 @@ def _fetch_target(target: dict) -> dict:
         "low": round(float(latest["Low"]), 2),
         "change": round(change, 2),
         "change_pct": round(change_pct, 2),
-        "multi_day_changes": multi_day_changes,
+        "daily_changes": daily_changes,
         "volume": int(latest["Volume"]) if "Volume" in latest else None,
     }
 

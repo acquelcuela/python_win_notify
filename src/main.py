@@ -19,7 +19,9 @@ MODULE_ORDER = [
     "stock_dividend",
     "market_news",
     "news_movers",
+    "stock_x_trends",
     "ai_summary",
+    "post_x_magazine",
     "report_html",
     "mail_gmail",
 ]
@@ -50,6 +52,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run modules regardless of config schedule. Useful for manual checks.",
     )
+    parser.add_argument(
+        "--schedule",
+        type=str,
+        default="",
+        help="Override the matched schedule time, e.g. 07:00, 09:30, 12:15, 22:45.",
+    )
     return parser.parse_args()
 
 
@@ -72,9 +80,31 @@ def get_window_minutes() -> int:
     return int(CONFIG.get("batch_window_minutes", 14))
 
 
+def is_weekday_only_enabled() -> bool:
+    return bool(CONFIG.get("batch_weekdays_only", True))
+
+
+def is_japanese_weekday(now: datetime) -> bool:
+    return now.weekday() < 5
+
+
 def module_enabled(module_name: str) -> bool:
     modules = CONFIG.get("modules", {})
     return bool(modules.get(module_name, False))
+
+
+def _configured_schedule_modules() -> dict[str, list[str]]:
+    raw = CONFIG.get("schedule_modules", {})
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, list[str]] = {}
+    for key, value in raw.items():
+        if not isinstance(value, list):
+            continue
+        modules = [str(item).strip() for item in value if str(item).strip()]
+        if modules:
+            normalized[str(key).strip()] = modules
+    return normalized
 
 
 def validate_config() -> list[str]:
@@ -87,6 +117,25 @@ def validate_config() -> list[str]:
             value = modules.get(module)
             if not isinstance(value, bool):
                 errors.append(f"config.json modules.{module} must be true or false.")
+
+    schedule_modules = CONFIG.get("schedule_modules")
+    if schedule_modules is not None:
+        if not isinstance(schedule_modules, dict):
+            errors.append("config.json schedule_modules must be an object.")
+        else:
+            valid_schedule_keys = {item.strftime("%H:%M") for item in parse_schedule(get_schedule_value())}
+            for schedule_key, module_list in schedule_modules.items():
+                if schedule_key not in valid_schedule_keys:
+                    errors.append(f"config.json schedule_modules.{schedule_key} is not in batch_schedule.")
+                    continue
+                if not isinstance(module_list, list):
+                    errors.append(f"config.json schedule_modules.{schedule_key} must be an array.")
+                    continue
+                for module_name in module_list:
+                    if str(module_name) not in MODULE_ORDER:
+                        errors.append(
+                            f"config.json schedule_modules.{schedule_key} contains unknown module: {module_name}."
+                        )
 
     try:
         parse_schedule(get_schedule_value())
@@ -101,6 +150,10 @@ def validate_config() -> list[str]:
         errors.append("config.json batch_window_minutes must be an integer.")
     except TypeError:
         errors.append("config.json batch_window_minutes must be an integer.")
+
+    weekdays_only = CONFIG.get("batch_weekdays_only", True)
+    if not isinstance(weekdays_only, bool):
+        errors.append("config.json batch_weekdays_only must be true or false.")
 
     return errors
 
@@ -198,15 +251,21 @@ def load_module_runner(module_name: str):
     return module.run
 
 
-def run_enabled_modules() -> None:
-    module_status = {
-        name: "on" if module_enabled(name) else "off"
-        for name in MODULE_ORDER
-    }
+def resolve_modules_for_schedule(schedule_key: str | None) -> list[str]:
+    schedule_modules = _configured_schedule_modules()
+    if schedule_key and schedule_key in schedule_modules:
+        return [name for name in schedule_modules[schedule_key] if module_enabled(name)]
+    return [name for name in MODULE_ORDER if module_enabled(name)]
 
+
+def run_enabled_modules(schedule_key: str | None = None) -> None:
+    selected_modules = resolve_modules_for_schedule(schedule_key)
+    module_status = {name: ("on" if name in selected_modules else "off") for name in MODULE_ORDER}
+
+    logging.info("Selected schedule: %s", schedule_key or "default")
     logging.info("Module settings: %s", module_status)
     for name in MODULE_ORDER:
-        if module_status[name] == "off":
+        if name not in selected_modules:
             logging.info("[%s] skipped: disabled", name)
             continue
 
@@ -242,25 +301,41 @@ def main() -> int:
     now = datetime.now(JST)
     started_at = now
     run_key = None
+    schedule_key = None
     if not args.force:
+        if is_weekday_only_enabled() and not is_japanese_weekday(now):
+            logging.info("Skipped: weekend run is disabled (%s JST).", now.strftime("%Y-%m-%d %H:%M"))
+            return 0
         should_run, matched_time = is_execution_time(now)
         if not should_run:
             logging.info("Skipped: current time is outside schedule window (%s JST).", now.strftime("%H:%M"))
             return 0
         logging.info("Matched schedule: %s JST", matched_time)
         run_key = build_run_key(now, matched_time)
+        schedule_key = matched_time
         if was_run_completed(run_key):
             logging.info("Skipped: schedule %s was already completed.", run_key)
             return 0
     else:
         logging.info("Force mode enabled; schedule check skipped.")
+        if args.schedule:
+            parsed_schedule = parse_schedule(args.schedule)
+            if len(parsed_schedule) != 1:
+                logging.error("--schedule must contain exactly one HH:MM entry.")
+                return 1
+            schedule_key = parsed_schedule[0].strftime("%H:%M")
+            logging.info("Force schedule override: %s", schedule_key)
 
     if not acquire_lock():
         logging.info("Skipped: another batch run is already in progress.")
         return 0
 
     try:
-        run_enabled_modules()
+        if schedule_key:
+            os.environ["BATCH_SCHEDULE_KEY"] = schedule_key
+        else:
+            os.environ.pop("BATCH_SCHEDULE_KEY", None)
+        run_enabled_modules(schedule_key=schedule_key)
     except Exception:
         logging.exception("Batch failed.")
         return 1

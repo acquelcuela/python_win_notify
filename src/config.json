@@ -1,6 +1,11 @@
 {
-  "batch_schedule": ["07:00", "09:30", "12:15", "22:45"],
+  "batch_schedule": ["07:00", "08:00", "09:30", "12:15", "21:00", "22:45"],
   "batch_window_minutes": 14,
+  "batch_weekdays_only": true,
+  "schedule_modules": {
+    "08:00": ["post_x_magazine"],
+    "21:00": ["post_x_magazine"]
+  },
   "modules": {
     "stock_nikkei": true,
     "stock_watchlist": true,
@@ -8,7 +13,9 @@
     "stock_dividend": true,
     "market_news": true,
     "news_movers": true,
+    "stock_x_trends": true,
     "ai_summary": true,
+    "post_x_magazine": true,
     "report_html": true,
     "mail_gmail": true
   },
@@ -16,51 +23,56 @@
     "provider": "gemini",
     "model": "gemini-3.1-flash-lite"
   },
+  "stock_x_trends": {
+    "enabled": true,
+    "model": "grok-4.3",
+    "max_tokens": 1000
+  },
   "market_news": {
     "sources": [
       {
         "name": "Google News",
         "queries": [
-          "日本株 ニュース",
-          "東京株式市場 ニュース",
-          "東証 銘柄 材料",
-          "日本株 セクター 業種",
-          "日本株 レーティング 目標株価"
+          "髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢譏懶ｽｹ譁溽､ｼ・ｹ譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｹ",
+          "髫ｴ螟ｲ・ｽ・ｱ髣費｣ｰ繝ｻ・ｬ髫ｴ・ｬ繝ｻ・ｪ髯溷床・ｸ讖ｸ・ｽ・ｸ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ 驛｢譏懶ｽｹ譁溽､ｼ・ｹ譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｹ",
+          "髫ｴ螟ｲ・ｽ・ｱ鬮ｫ・ｪ繝ｻ・ｼ 鬯ｩ・ｫ闖ｫ・ｶ雎後・髫ｴ螢ｼ繝ｻ關難ｽｭ",
+          "髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢・ｧ繝ｻ・ｻ驛｢・ｧ繝ｻ・ｯ驛｢・ｧ繝ｻ・ｿ驛｢譎｢・ｽ・ｼ 髫ｶ魃会ｽｽ・ｭ鬩墓ｩｸ・ｽ・ｮ",
+          "髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢譎｢・ｽ・ｬ驛｢譎｢・ｽ・ｼ驛｢譏ｴ繝ｻ邵ｺ繝ｻ・ｹ譎｢・ｽ・ｳ驛｢・ｧ繝ｻ・ｰ 鬨ｾ・ｶ繝ｻ・ｮ髫ｶ轣倡ｶ懊・・ｰ繝ｻ・ｪ髣憺屮・ｽ・｡"
         ]
       },
       {
-        "name": "株探",
+        "name": "髫ｴ・ｬ繝ｻ・ｪ髫ｰ證ｦ・ｽ・｢",
         "queries": [
-          "site:kabutan.jp 日本株 ニュース",
-          "site:kabutan.jp 東京市場 材料株",
-          "site:kabutan.jp レーティング 目標株価 日本株"
+          "site:kabutan.jp 髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢譏懶ｽｹ譁溽､ｼ・ｹ譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｹ",
+          "site:kabutan.jp 髫ｴ螟ｲ・ｽ・ｱ髣費｣ｰ繝ｻ・ｬ髯晢ｽｶ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ 髫ｴ螢ｼ繝ｻ關難ｽｭ髫ｴ・ｬ繝ｻ・ｪ",
+          "site:kabutan.jp 驛｢譎｢・ｽ・ｬ驛｢譎｢・ｽ・ｼ驛｢譏ｴ繝ｻ邵ｺ繝ｻ・ｹ譎｢・ｽ・ｳ驛｢・ｧ繝ｻ・ｰ 鬨ｾ・ｶ繝ｻ・ｮ髫ｶ轣倡ｶ懊・・ｰ繝ｻ・ｪ髣憺屮・ｽ・｡ 髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ"
         ]
       },
       {
         "name": "Reuters",
         "queries": [
-          "site:jp.reuters.com 日本株 東京市場",
-          "site:jp.reuters.com 東京株式市場",
-          "site:jp.reuters.com 日本株 セクター 銘柄"
+          "site:jp.reuters.com 髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 髫ｴ螟ｲ・ｽ・ｱ髣費｣ｰ繝ｻ・ｬ髯晢ｽｶ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ",
+          "site:jp.reuters.com 髫ｴ螟ｲ・ｽ・ｱ髣費｣ｰ繝ｻ・ｬ髫ｴ・ｬ繝ｻ・ｪ髯溷床・ｸ讖ｸ・ｽ・ｸ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ",
+          "site:jp.reuters.com 髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢・ｧ繝ｻ・ｻ驛｢・ｧ繝ｻ・ｯ驛｢・ｧ繝ｻ・ｿ驛｢譎｢・ｽ・ｼ 鬯ｩ・ｫ闖ｫ・ｶ雎後・"
         ]
       }
     ],
     "queries": [
-      "日本株 ニュース",
-      "東京株式市場 ニュース",
-      "東証 銘柄 材料",
-      "日本株 セクター 業種",
-      "日本株 レーティング 目標株価"
+      "髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢譏懶ｽｹ譁溽､ｼ・ｹ譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｹ",
+      "髫ｴ螟ｲ・ｽ・ｱ髣費｣ｰ繝ｻ・ｬ髫ｴ・ｬ繝ｻ・ｪ髯溷床・ｸ讖ｸ・ｽ・ｸ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ 驛｢譏懶ｽｹ譁溽､ｼ・ｹ譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｹ",
+      "髫ｴ螟ｲ・ｽ・ｱ鬮ｫ・ｪ繝ｻ・ｼ 鬯ｩ・ｫ闖ｫ・ｶ雎後・髫ｴ螢ｼ繝ｻ關難ｽｭ",
+      "髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢・ｧ繝ｻ・ｻ驛｢・ｧ繝ｻ・ｯ驛｢・ｧ繝ｻ・ｿ驛｢譎｢・ｽ・ｼ 髫ｶ魃会ｽｽ・ｭ鬩墓ｩｸ・ｽ・ｮ",
+      "髫ｴ魃会ｽｽ・･髫ｴ蟷｢・ｽ・ｬ髫ｴ・ｬ繝ｻ・ｪ 驛｢譎｢・ｽ・ｬ驛｢譎｢・ｽ・ｼ驛｢譏ｴ繝ｻ邵ｺ繝ｻ・ｹ譎｢・ｽ・ｳ驛｢・ｧ繝ｻ・ｰ 鬨ｾ・ｶ繝ｻ・ｮ髫ｶ轣倡ｶ懊・・ｰ繝ｻ・ｪ髣憺屮・ｽ・｡"
     ],
     "max_items": 24,
     "per_source_limit": 8,
     "lookback_hours": 18,
     "exclude_title_keywords": [
-      "米国株個別",
-      "米国株",
-      "ダウ先物",
-      "ＮＹ株",
-      "NY株"
+      "鬩債繝ｻ・ｳ髯懈圜・ｽ・ｽ髫ｴ・ｬ繝ｻ・ｪ髯区ｺｷ蜚ｱ隰厄ｽｨ",
+      "鬩債繝ｻ・ｳ髯懈圜・ｽ・ｽ髫ｴ・ｬ繝ｻ・ｪ",
+      "驛｢謨鳴驛｢・ｧ繝ｻ・ｦ髯ｷ驛√＃魄溘・",
+      "郢晢ｽｻ繝ｻ・ｮ郢晢ｽｻ繝ｻ・ｹ髫ｴ・ｬ繝ｻ・ｪ",
+      "NY髫ｴ・ｬ繝ｻ・ｪ"
     ]
   },
   "news_movers": {
@@ -69,12 +81,72 @@
     "max_tickers": 12,
     "min_name_length": 4
   },
+  "post_x_magazine": {
+    "enabled": true,
+    "creator": "fukuoka_dividend",
+    "run_times": ["08:00", "21:00"],
+    "history_days": 5,
+    "rotation_state_file": "state/post_x_magazine_rotation.json",
+    "history_file": "state/post_x_magazine_history.json",
+    "cache_file": "state/post_x_magazine_cache.json",
+    "fallback_articles_file": "state/note_articles_cache.json",
+    "exclude_file": "state/post_x_magazine_exclude_urls.txt",
+    "exclude_keys_file": "state/post_x_magazine_exclude_keys.txt",
+    "model": "gemini-3.1-flash-lite",
+    "max_pages": 50,
+    "magazines": [
+      {
+        "id": "high_dividend_review",
+        "name": "高配当株レビュー",
+        "tweet_id": "",
+        "tweet_url": "",
+        "article_keys": [],
+        "enabled": true
+      },
+      {
+        "id": "etf_index",
+        "name": "ETF・インデックス",
+        "tweet_id": "",
+        "tweet_url": "",
+        "article_keys": [],
+        "enabled": true
+      },
+      {
+        "id": "fire_living",
+        "name": "FIRE・配当生活",
+        "tweet_id": "2075407380968546351",
+        "tweet_url": "https://x.com/fuk_dividend/status/2075407380968546351",
+        "article_keys": [
+          "n098694fbc8d5",
+          "nb9b1676469bd",
+          "nd5e169c3c974"
+        ],
+        "enabled": true
+      },
+      {
+        "id": "tax_inheritance",
+        "name": "税金・相続",
+        "tweet_id": "",
+        "tweet_url": "",
+        "article_keys": [],
+        "enabled": true
+      },
+      {
+        "id": "portfolio_rules",
+        "name": "ポートフォリオ設計",
+        "tweet_id": "",
+        "tweet_url": "",
+        "article_keys": [],
+        "enabled": true
+      }
+    ]
+  },
   "watchlist": {
     "tickers": [
       {"ticker": "8035.T", "name": "東京エレクトロン"},
       {"ticker": "1570.T", "name": "NEXT FUNDS 日経平均レバレッジ"},
       {"ticker": "3436.T", "name": "SUMCO"},
-      {"ticker": "200A.T", "name": "NF日経半導体株"},
+      {"ticker": "200A.T", "name": "NEXT FUNDS 日経半導体株"},
       {"ticker": "2962.T", "name": "テクニスコ"},
       {"ticker": "4323.T", "name": "日本システム技術"},
       {"ticker": "3661.T", "name": "エムアップホールディングス"},
@@ -96,14 +168,14 @@
         "ex_dividend_date": "2026-06-22",
         "last_dividend": 0.157,
         "date_confidence": "estimated_from_recent_history",
-        "source": "Dividend.com の履歴で RYLD は 2026-05-18 まで月次分配を確認。6月分は直近の月次パターンから推定。"
+        "source": "Dividend.com 驍ｵ・ｺ繝ｻ・ｮ髯橸ｽｻ繝ｻ・･髮弱・・ｽ・ｴ驍ｵ・ｺ繝ｻ・ｧ RYLD 驍ｵ・ｺ繝ｻ・ｯ 2026-05-18 驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ繝ｻ・ｧ髫ｴ蟶帶ｲｺ繝ｻ・ｬ繝ｻ・｡髯具ｽｻ郢晢ｽｻ郢晢ｽｻ驛｢・ｧ陜｣・､繝ｻ・｢繝ｻ・ｺ鬮ｫ・ｱ鬮ｦ・ｪ・つ郢晢ｽｻ髫ｴ蟶托ｽｺ・･郢晢ｽｻ驍ｵ・ｺ繝ｻ・ｯ鬨ｾ・ｶ繝ｻ・ｴ鬮ｴ蜿ｰ・ｻ・｣郢晢ｽｻ髫ｴ蟶帶ｲｺ繝ｻ・ｬ繝ｻ・｡驛｢譏懶ｽｻ・｣邵ｺ・｡驛｢譎｢・ｽ・ｼ驛｢譎｢・ｽ・ｳ驍ｵ・ｺ闕ｵ譎｢・ｽ闃ｽ・ｬ證ｦ・ｽ・ｨ髯橸ｽｳ陞｢・ｹ・つ郢晢ｽｻ"
       },
       "SDIV": {
         "name": "Global X SuperDividend ETF",
         "ex_dividend_date": "2026-07-02",
         "last_dividend": 0.18,
         "date_confidence": "estimated_from_recent_history",
-        "source": "Dividend.com の履歴で SDIV は 2026-06-03 まで月次分配を確認。7月分は月初スケジュールと 2026-07-03 米国市場休場を踏まえて推定。"
+        "source": "Dividend.com 驍ｵ・ｺ繝ｻ・ｮ髯橸ｽｻ繝ｻ・･髮弱・・ｽ・ｴ驍ｵ・ｺ繝ｻ・ｧ SDIV 驍ｵ・ｺ繝ｻ・ｯ 2026-06-03 驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ繝ｻ・ｧ髫ｴ蟶帶ｲｺ繝ｻ・ｬ繝ｻ・｡髯具ｽｻ郢晢ｽｻ郢晢ｽｻ驛｢・ｧ陜｣・､繝ｻ・｢繝ｻ・ｺ鬮ｫ・ｱ鬮ｦ・ｪ・つ郢晢ｽｻ髫ｴ蟶托ｽｺ・･郢晢ｽｻ驍ｵ・ｺ繝ｻ・ｯ髫ｴ蟶托ｽｺ・･郢晢ｽｻ驛｢・ｧ繝ｻ・ｹ驛｢・ｧ繝ｻ・ｱ驛｢・ｧ繝ｻ・ｸ驛｢譎｢・ｽ・･驛｢譎｢・ｽ・ｼ驛｢譎｢・ｽ・ｫ驍ｵ・ｺ繝ｻ・ｨ 2026-07-03 鬩債繝ｻ・ｳ髯懈圜・ｽ・ｽ髯晢ｽｶ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ髣費ｽｨ陞滂ｽｧ繝ｻ・ｰ繝ｻ・ｴ驛｢・ｧ陞ｳ螟ｲ・ｽ・ｸ闕ｳ蟯ｩ遨宣し・ｺ陋ｹ・ｻ遯ｶ・ｻ髫ｰ證ｦ・ｽ・ｨ髯橸ｽｳ陞｢・ｹ・つ郢晢ｽｻ"
       }
     }
   }

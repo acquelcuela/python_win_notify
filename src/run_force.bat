@@ -5,9 +5,31 @@ cd /d "%~dp0"
 
 echo NightlyBatchNotify force test run
 echo.
-echo This runs main.py --force and ignores schedule windows.
+echo Select the schedule pattern to test.
+echo  1 = 07:00
+echo  2 = 09:30
+echo  3 = 12:15
+echo  4 = 22:45
+echo  5 = All enabled modules
+echo.
+echo This runs main.py --force and ignores time-of-day checks.
 echo Enabled modules may fetch market/news data, call Gemini, and send Gmail.
 echo.
+
+choice /c 12345 /n /m "Choose a pattern: "
+set "SCHEDULE_ARG="
+if errorlevel 5 goto SCHED_ALL
+if errorlevel 4 set "SCHEDULE_ARG=22:45"
+if errorlevel 3 set "SCHEDULE_ARG=12:15"
+if errorlevel 2 set "SCHEDULE_ARG=09:30"
+if errorlevel 1 set "SCHEDULE_ARG=07:00"
+goto SCHED_DONE
+
+:SCHED_ALL
+echo Running all currently enabled modules.
+goto SCHED_DONE
+
+:SCHED_DONE
 
 if not exist logs mkdir logs
 
@@ -29,7 +51,11 @@ if not exist "%VENV_PYTHON%" (
   exit /b 1
 )
 
-"%VENV_PYTHON%" main.py --force >> "%TASK_LOG%" 2>&1
+if "%SCHEDULE_ARG%"=="" (
+  "%VENV_PYTHON%" main.py --force >> "%TASK_LOG%" 2>&1
+) else (
+  "%VENV_PYTHON%" main.py --force --schedule %SCHEDULE_ARG% >> "%TASK_LOG%" 2>&1
+)
 set "EXIT_CODE=%ERRORLEVEL%"
 >> "%TASK_LOG%" echo [%date% %time%] Force test run finished. Exit code: %EXIT_CODE%
 >> "%TASK_LOG%" echo.
