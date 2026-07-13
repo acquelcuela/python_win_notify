@@ -278,9 +278,47 @@ def _split_article_text(text: str, parts: int = 3, chunk_size: int = 90) -> list
     if not sentences:
         sentences = [cleaned]
 
+    def _hard_split(piece: str) -> list[str]:
+        # Prefer breaking on the Japanese comma (、) before falling back to a
+        # raw character cut, so an oversized run-on sentence doesn't get
+        # sliced mid-word. The ASCII "," is deliberately excluded: in these
+        # articles it almost always appears as a thousands separator (e.g.
+        # "18,000円"), and splitting on it would break numbers apart.
+        sub_pieces = [p.strip() for p in re.split(r"(?<=[、])", piece) if p.strip()]
+        if not sub_pieces:
+            sub_pieces = [piece]
+        result: list[str] = []
+        sub_current = ""
+        for sub in sub_pieces:
+            if len(sub) > chunk_size:
+                if sub_current:
+                    result.append(sub_current.strip())
+                    sub_current = ""
+                result.extend(
+                    seg.strip()
+                    for seg in (sub[i : i + chunk_size] for i in range(0, len(sub), chunk_size))
+                    if seg.strip()
+                )
+                continue
+            candidate = f"{sub_current}{sub}".strip()
+            if not sub_current or len(candidate) <= chunk_size:
+                sub_current = candidate
+            else:
+                result.append(sub_current.strip())
+                sub_current = sub
+        if sub_current:
+            result.append(sub_current.strip())
+        return result
+
     chunks: list[str] = []
     current = ""
     for sentence in sentences:
+        if len(sentence) > chunk_size:
+            if current:
+                chunks.append(current.strip())
+                current = ""
+            chunks.extend(_hard_split(sentence))
+            continue
         candidate = f"{current}{sentence}".strip()
         if not current or len(candidate) <= chunk_size:
             current = candidate
@@ -365,8 +403,20 @@ def _build_prompt(article: dict | None, magazine: dict) -> str:
 
 
 def _content_chunks(article: dict | None, title: str, excerpt: str, magazine_name: str) -> list[str]:
-    source = "\n".join(part for part in [title, excerpt, magazine_name] if part).strip()
-    chunks = [chunk.strip() for chunk in _split_article_text(source, parts=16, chunk_size=55) if chunk.strip()]
+    # title/magazine_name are intentionally excluded here: neither has trailing
+    # punctuation, so mixing them into the sentence-split source text caused
+    # them to fuse onto the adjacent real sentence instead of standing alone
+    # (title duplicated into the first chunk, magazine name bleeding into the
+    # last one). Only the article body itself gets chunked.
+    source = excerpt.strip() or title
+    if source and source[-1] not in "。！？!?":
+        # Cached note excerpts are often cut off mid-sentence (paywall preview
+        # boundary). Drop the trailing incomplete fragment so the last chunk
+        # doesn't end mid-word instead of rendering the raw cutoff.
+        trim_idx = max(source.rfind(mark) for mark in "。！？!?、")
+        if trim_idx > 0:
+            source = source[: trim_idx + 1]
+    chunks = [chunk.strip() for chunk in _split_article_text(source, parts=16, chunk_size=80) if chunk.strip()]
     if chunks:
         return chunks
     fallback = [part for part in [title.strip(), excerpt.strip(), magazine_name.strip()] if part]
@@ -379,18 +429,35 @@ def _build_content_thread_parts(article: dict | None, magazine: dict) -> list[st
     excerpt = _article_content_text(article)
     title_line = title[:80] if title else (magazine_name or "要点")
     chunks = _content_chunks(article, title, excerpt, magazine_name)
-    grouped = [chunks[i : i + 4] for i in range(0, len(chunks), 4)]
+
+    # Distribute chunks evenly across the 4 posts (instead of fixed batches of
+    # 4) so a short article doesn't leave later posts empty, which previously
+    # fell back to re-slicing the excerpt from its start - duplicating earlier
+    # posts and cutting mid-word.
+    bucket_size = max(1, -(-len(chunks) // 4))
+    grouped = [chunks[i : i + bucket_size] for i in range(0, len(chunks), bucket_size)]
     while len(grouped) < 4:
         grouped.append([])
 
     parts: list[str] = []
+    used_generic_fallback = False
     for index in range(4):
         group = grouped[index] if index < len(grouped) else []
         lines = list(group[:5])
         if index == 0:
             lines = [f"【{title_line}】"] + lines
         if not lines:
-            lines = [title_line if index == 0 else (excerpt[:60] or title_line)]
+            if index == 0:
+                lines = [title_line]
+            elif not used_generic_fallback:
+                lines = [f"{magazine_name}の視点から要点をまとめました。" if magazine_name else title_line]
+                used_generic_fallback = True
+            else:
+                # A second (or later) empty group would only repeat the same
+                # generic line verbatim; leave it blank so the caller's
+                # empty-string filter drops it instead of posting a duplicate.
+                parts.append("")
+                continue
         parts.append(_format_multiline_tweet("\n".join(lines), max_lines=5)[:220].rstrip())
     return parts[:4]
 
