@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
 import os
 import subprocess
 import secrets
@@ -25,6 +26,7 @@ DEFAULT_MODEL = "gemini-3.1-flash-lite"
 X_MAX_CHARS = 280
 NOTE_API_URL = "https://note.com/api/v2/creators/{creator}/contents"
 X_TWEET_URL = "https://api.twitter.com/2/tweets"
+X_MEDIA_UPLOAD_URL = "https://upload.twitter.com/1.1/media/upload.json"
 
 
 def _load_json(path: Path) -> dict | list | None:
@@ -509,7 +511,7 @@ def _oauth1_header(
     return f"OAuth {header}"
 
 
-def _post_to_x(text: str, reply_to_tweet_id: str | None = None) -> dict:
+def _get_x_credentials() -> tuple[str, str, str, str]:
     api_key = os.getenv("X_API_KEY", "").strip()
     api_secret = os.getenv("X_API_SECRET", "").strip()
     access_token = os.getenv("X_ACCESS_TOKEN", "").strip()
@@ -527,10 +529,56 @@ def _post_to_x(text: str, reply_to_tweet_id: str | None = None) -> dict:
     ]
     if missing:
         raise RuntimeError("Missing X credentials: " + ", ".join(missing))
+    return api_key, api_secret, access_token, access_token_secret
+
+
+def _upload_media_to_x(image_path: Path) -> str:
+    api_key, api_secret, access_token, access_token_secret = _get_x_credentials()
+
+    image_bytes = image_path.read_bytes()
+    content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+    boundary = f"----NightlyBatchNotify{secrets.token_hex(16)}"
+    body = b"".join(
+        [
+            f"--{boundary}\r\n".encode("utf-8"),
+            f'Content-Disposition: form-data; name="media"; filename="{image_path.name}"\r\n'.encode("utf-8"),
+            f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"),
+            image_bytes,
+            f"\r\n--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+    headers = {
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+        "Authorization": _oauth1_header(
+            "POST",
+            X_MEDIA_UPLOAD_URL,
+            api_key,
+            api_secret,
+            access_token,
+            access_token_secret,
+        ),
+    }
+    request = urllib.request.Request(X_MEDIA_UPLOAD_URL, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"X media upload HTTP {exc.code}: {detail}") from exc
+    media_id = str(payload.get("media_id_string") or payload.get("media_id") or "").strip()
+    if not media_id:
+        raise RuntimeError(f"X media upload returned no media id: {payload}")
+    return media_id
+
+
+def _post_to_x(text: str, reply_to_tweet_id: str | None = None, media_ids: list[str] | None = None) -> dict:
+    api_key, api_secret, access_token, access_token_secret = _get_x_credentials()
 
     payload: dict[str, object] = {"text": text}
     if reply_to_tweet_id:
         payload["reply"] = {"in_reply_to_tweet_id": reply_to_tweet_id}
+    if media_ids:
+        payload["media"] = {"media_ids": media_ids}
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {
         "Content-Type": "application/json",

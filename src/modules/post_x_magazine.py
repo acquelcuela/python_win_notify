@@ -28,6 +28,7 @@ from modules.post_x_note import (
     _save_cached_articles,
     _save_history,
     _strip_html,
+    _upload_media_to_x,
 )
 
 
@@ -566,6 +567,34 @@ def _article_source_candidates(root: Path, config: dict) -> list[Path]:
     legacy_path = root.parent / "all_md_files_20260707" / "★tweet_tool" / "tweet_tool" / "note_articles_cache.json"
     candidates.append(legacy_path)
     return candidates
+
+
+POST_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+
+def _pick_post_image(root: Path) -> Path | None:
+    image_dir = root / "post_images"
+    if not image_dir.is_dir():
+        return None
+    candidates = [
+        path
+        for path in image_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in POST_IMAGE_EXTENSIONS
+    ]
+    if not candidates:
+        return None
+    return random.choice(candidates)
+
+
+def _mark_image_as_posted(image_path: Path) -> None:
+    posted_dir = image_path.parent / "posted"
+    posted_dir.mkdir(exist_ok=True)
+    destination = posted_dir / image_path.name
+    if destination.exists():
+        destination = posted_dir / f"{image_path.stem}_{int(time.time())}{image_path.suffix}"
+    image_path.rename(destination)
+
+
 def _select_article(
     articles: list[dict],
     magazine: dict,
@@ -838,6 +867,17 @@ def run(root: Path) -> None:
         return
 
     fallback_parts = _build_thread_fallback_parts(article, magazine)
+
+    post_image_path = _pick_post_image(root)
+    media_id: str | None = None
+    if post_image_path:
+        try:
+            media_id = _upload_media_to_x(post_image_path)
+            logging.info("[post_x_magazine] attached image: %s", post_image_path.name)
+        except Exception as exc:
+            logging.warning("[post_x_magazine] image upload failed, posting without image: %s", exc)
+            media_id = None
+
     posted_parts: list[str] = []
     try:
         post_result = None
@@ -855,7 +895,7 @@ def run(root: Path) -> None:
             for candidate_text in candidate_texts:
                 try:
                     if index == 0:
-                        post_result = _post_to_x(candidate_text)
+                        post_result = _post_to_x(candidate_text, media_ids=[media_id] if media_id else None)
                         tweet_id = str(post_result.get("data", {}).get("id") or "").strip()
                         if not tweet_id:
                             raise RuntimeError("X API returned no tweet id for the primary post.")
@@ -916,6 +956,11 @@ def run(root: Path) -> None:
         }
     )
     _save_history(history_path, history[-200:])
+    if post_image_path and media_id:
+        try:
+            _mark_image_as_posted(post_image_path)
+        except Exception as exc:
+            logging.warning("[post_x_magazine] failed to move used image to posted/: %s", exc)
     _save_rotation_state(
         rotation_path,
         {
