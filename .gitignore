@@ -26,11 +26,12 @@ files1/
 # Local screenshots and mail layout captures
 pic/
 
-# X-post images (personal content, not tracked; README.md still tracked)
+# X-post images (personal content, not tracked; only READMEs stay tracked)
 src/post_images/*
 !src/post_images/README.md
-src/post_images_posted/*
-!src/post_images_posted/README.md
+!src/post_images/posted/
+src/post_images/posted/*
+!src/post_images/posted/README.md
 
 # OS/editor noise
 .DS_Store
