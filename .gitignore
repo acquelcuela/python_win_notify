@@ -26,6 +26,10 @@ files1/
 # Local screenshots and mail layout captures
 pic/
 
+# X-post images (personal content, not tracked; README.md still tracked)
+src/post_images/*
+!src/post_images/README.md
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
