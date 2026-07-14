@@ -1,102 +1,103 @@
-# NightlyBatchNotify Progress Notes
+# NightlyBatchNotify 進捗ノート
 
-## Goal
+## 目的
 
-Build `nightly_batch_notify_overview` under `src`.
+`src` 配下に `nightly_batch_notify_overview` を構築する。
 
-The intended operation is:
+想定する動作:
 
-- Windows Task Scheduler starts the batch at fixed times.
-- The batch checks the schedule window itself.
-- Phase 1 collects Nikkei 225 futures data, generates an HTML report, and sends it by Gmail.
+- Windows タスクスケジューラが決まった時刻にバッチを起動する。
+- バッチ自身がスケジュール窓(実行してよい時間帯か)をチェックする。
+- フェーズ1では日経225先物データを収集し、HTMLレポートを生成してGmailで送信する。
 
-## Initial Docker Direction
+## 当初のDocker方針
 
-The first implementation used Docker Compose:
+最初の実装はDocker Composeを使用していた:
 
 - `docker compose run --rm batch`
-- Temporary container per scheduled run
-- `python:3.11-slim` Linux image
+- スケジュール実行ごとに一時コンテナを起動
+- `python:3.11-slim` のLinuxイメージ
 
-This matched the original overview, but the PC environment was not suitable for Linux containers.
+当初の構想には合っていたが、PC環境がLinuxコンテナに適していなかった。
 
-## Docker Investigation
+## Docker調査
 
-Docker CLI and Compose were installed, and Docker Engine service was running.
+Docker CLIとComposeはインストール済みで、Docker Engineサービスも稼働していた。
 
-Important findings:
+分かったこと:
 
-- Docker API access from the Codex session was denied.
-- In the user's `cmd`, Docker worked.
-- `docker info --format "{{.OSType}}"` returned:
+- CodexセッションからのDocker APIアクセスは拒否された。
+- ユーザーの`cmd`からはDockerが動作した。
+- `docker info --format "{{.OSType}}"` の結果:
 
 ```text
 windows
 ```
 
-This means the local Docker Engine is configured for Windows containers, not Linux containers.
+これは、ローカルのDocker EngineがLinuxコンテナ用ではなく、Windowsコンテナ用に
+設定されていることを意味する。
 
-The Linux image failed with:
+Linuxイメージは次のエラーで失敗した:
 
 ```text
 no matching manifest for windows(10.0.19045)/amd64
 ```
 
-## Windows Container Attempt
+## Windowsコンテナの試行
 
-The Dockerfile was temporarily changed to use Windows containers.
+DockerfileをWindowsコンテナ用に一時的に変更した。
 
-Tried approaches:
+試したアプローチ:
 
-- Official Python Windows image:
+- 公式Python Windowsイメージ:
 
 ```dockerfile
 FROM python:3.13-windowsservercore-ltsc2022
 ```
 
-- Windows Server Core base image with Python installed during build:
+- ビルド時にPythonをインストールするWindows Server Coreベースイメージ:
 
 ```dockerfile
 FROM mcr.microsoft.com/windows/servercore:ltsc2019
 ```
 
-Reason for abandoning this path:
+この方針を断念した理由:
 
-- Windows containers have strong host OS build dependencies.
-- The host was detected as `windows(10.0.19045)/amd64`.
-- Official Python Windows images did not match this environment cleanly.
-- Windows Server Core images are heavy and less portable.
-- This reduced the main benefit of Docker: reproducible execution across environments.
+- WindowsコンテナはホストOSのビルド依存性が強い。
+- ホストは`windows(10.0.19045)/amd64`として検出された。
+- 公式Python Windowsイメージはこの環境にきれいに一致しなかった。
+- Windows Server Coreイメージは重く、可搬性が低い。
+- これによりDockerの主な利点(環境をまたいだ再現可能な実行)が薄れた。
 
-Conclusion:
+結論:
 
-Windows containers are not a good fit for this batch on this PC.
+このPCのこのバッチにおいて、Windowsコンテナは適していない。
 
-## Final Direction
+## 最終方針
 
-The project was switched to:
+プロジェクトは以下に切り替えた:
 
 ```text
 Windows Python + src\.venv
 ```
 
-Reasons:
+理由:
 
-- No Docker daemon dependency.
-- No Windows container OS-version dependency.
-- Python dependencies are isolated inside `src\.venv`.
-- Task Scheduler can call a simple `.bat` file.
-- This is easier to operate on this PC.
+- Dockerデーモンへの依存がない。
+- WindowsコンテナのOSバージョン依存がない。
+- Python依存関係は`src\.venv`内に隔離される。
+- タスクスケジューラは単純な`.bat`ファイルを呼べばよい。
+- このPCでの運用が容易。
 
-## Current File State
+## 当時のファイル構成
 
-Docker files were removed from `src`:
+Dockerファイルは`src`から削除した:
 
 - `Dockerfile`
 - `docker-compose.yml`
 - `.dockerignore`
 
-Current important files:
+当時の主要ファイル:
 
 - `main.py`
 - `requirements.txt`
@@ -109,34 +110,34 @@ Current important files:
 - `modules/report_html.py`
 - `modules/mail_gmail.py`
 
-## Current Operation
+## 当時の運用方法
 
-Initial setup:
+初回セットアップ:
 
 ```cmd
 cd /d "C:\Users\user\OneDrive - LIFEWORK\data@OneDrive\kaeru\ai_other_cli_2026\ai_agent_win_notify_cron\src"
 setup_windows.bat
 ```
 
-Manual forced test:
+手動の強制テスト:
 
 ```cmd
 .venv\Scripts\python.exe main.py --force
 ```
 
-Scheduled execution:
+スケジュール実行:
 
 ```text
 C:\Users\user\OneDrive - LIFEWORK\data@OneDrive\kaeru\ai_other_cli_2026\ai_agent_win_notify_cron\src\run.bat
 ```
 
-`run.bat` expects `src\.venv` to exist.
+`run.bat`は`src\.venv`が存在することを前提とする。
 
-## Environment File
+## 環境変数ファイル
 
-`.env` was created for local testing.
+ローカルテスト用に`.env`を作成した。
 
-Current safe test setting:
+当時の安全なテスト設定:
 
 ```json
 "modules": {
@@ -144,9 +145,9 @@ Current safe test setting:
 }
 ```
 
-This prevents accidental Gmail sending during tests.
+これによりテスト中に誤ってGmailを送信することを防ぐ。
 
-Current mail delivery setting:
+当時の本番メール送信設定:
 
 ```json
 "modules": {
@@ -154,183 +155,172 @@ Current mail delivery setting:
 }
 ```
 
-Gmail credentials remain in `.env`.
+Gmail認証情報は`.env`に残す。
 
-## Verification Done
+## 検証済みの内容
 
-Dependency installation succeeded:
+依存パッケージのインストールに成功:
 
 - `yfinance`
 - `python-dotenv`
 - `pandas`
-- related dependencies
+- 関連する依存パッケージ
 
-Forced run completed:
+強制実行が完了:
 
 ```cmd
 .venv\Scripts\python.exe main.py --force
 ```
 
-The batch completed and generated:
+バッチは完了し、以下を生成した:
 
 - `output/report.html`
 - `logs/batch.log`
 
-## Remaining Issue
+## 残課題(当時)
 
-`yfinance` cannot currently reach Yahoo:
+`yfinance`が現状Yahooに到達できない:
 
 ```text
 Failed to connect to fc.yahoo.com port 443
 ```
 
-This appears to be a network, firewall, proxy, or endpoint access issue rather than a Python dependency issue.
+Pythonの依存関係の問題というより、ネットワーク・ファイアウォール・プロキシ・
+エンドポイントアクセスの問題と思われる。
 
-The batch still completes:
+それでもバッチ自体は完了する:
 
-- `stock_nikkei.json` records the fetch error.
-- `report_html` still generates a report.
-- `mail_gmail` is currently disabled.
+- `stock_nikkei.json`には取得エラーが記録される。
+- `report_html`はレポートを生成し続ける。
+- `mail_gmail`は当時無効化されていた。
 
-## Fix Already Applied
+## 既に適用した修正
 
-`yfinance` tried to write cache files under:
+`yfinance`は以下の場所にキャッシュファイルを書き込もうとしていた:
 
 ```text
 C:\Users\user\AppData\Local\py-yfinance
 ```
 
-That caused access-denied warnings.
+これがアクセス拒否の警告を引き起こしていた。
 
-The code was changed to use:
+コードを以下を使うように変更した:
 
 ```text
 src\.cache\yfinance
 ```
 
-This keeps runtime cache inside the project directory.
+これによりランタイムキャッシュがプロジェクトディレクトリ内に収まる。
 
-## Completed Setup Notes
+## セットアップ完了に関するメモ
 
-Yahoo Finance access, Gmail delivery, and scheduled-task kicks were verified
-during setup. Current non-secret settings now live in `config.json`.
+Yahoo Financeへのアクセス、Gmail配信、スケジュールタスクの起動は、セットアップ中に
+検証済み。機密情報を除く設定は現在`config.json`に集約されている。
 
-## Configuration Split
+## 設定の分離
 
-Settings were later split to make AI-assisted edits safer:
+AI支援での編集を安全にするため、後に設定を分離した:
 
-- `config.json` stores non-secret runtime settings such as schedules and module flags.
-- `.env` stores only Gmail credentials and addresses.
+- `config.json`にはスケジュールやモジュールフラグなど、機密でないランタイム設定を保存する。
+- `.env`にはGmail認証情報とメールアドレスのみを保存する。
 
-This keeps secrets out of git while allowing normal behavior changes to be
-committed and reviewed.
+これによりシークレットをgitから除外しつつ、通常の動作変更はコミット・レビュー可能なままにする。
 
-## Intentional Spec Changes After Initial Draft
+## 初期案からの意図的な仕様変更
 
-The original markdown drafts used `.env` `MODULE_*` values for module ON/OFF
-settings. After implementation, this was changed intentionally:
+当初のMarkdown草案では、モジュールのON/OFF設定に`.env`の`MODULE_*`値を使っていた。
+実装後、これを意図的に変更した:
 
-- Module flags are now stored in `config.json`.
-- `.env` is kept for secrets only, especially Gmail credentials.
-- This makes normal behavior changes reviewable in git and safer for AI-assisted
-  edits because secrets are not mixed with runtime switches.
+- モジュールフラグは現在`config.json`に保存する。
+- `.env`はGmail認証情報などのシークレット専用にする。
+- これにより通常の動作変更をgitでレビュー可能にし、シークレットとランタイムの
+  切り替えが混在しないためAI支援編集がより安全になる。
 
-The original drafts also mentioned a `06:30` run time. After scheduler setup,
-manual operation checks, and market-timing review, the active windows were
-changed to:
+当初の草案では`06:30`という実行時刻も挙がっていたが、スケジューラのセットアップ、
+手動運用確認、市場タイミングの見直しを経て、稼働時間帯を以下に変更した:
 
 - `07:00-07:14`
 - `09:30-09:44`
 - `12:15-12:29`
 - `22:45-22:59`
 
-The intent is:
+狙いは:
 
-- `07:00`: check the final overnight Nikkei futures result before the Japanese
-  market opens.
-- `09:30`: check early Tokyo-market news and opening-session movement after the
-  market has started.
-- `12:15`: check morning-session Japanese stock news and movement.
-- `22:45`: check evening news and Nikkei futures shortly after the US market
-  opens during daylight saving time.
+- `07:00`: 日本市場が開く前に、夜間の日経225先物の最終結果を確認する。
+- `09:30`: 市場が始まった後、東京市場の早いニュースと寄り付き後の値動きを確認する。
+- `12:15`: 午前立会のニュースと値動きを確認する。
+- `22:45`: サマータイム中に米国市場が開いた直後の、夜のニュースと日経225先物を確認する。
 
-The task itself still starts every 15 minutes. `main.py` decides whether the
-current start is inside an active window. This keeps Task Scheduler simple while
-preventing duplicate sends through `state/run_history.json`.
+タスク自体は引き続き15分おきに起動する。`main.py`が、その起動が稼働時間帯内かどうかを
+判定する。これによりタスクスケジューラをシンプルに保ちつつ、`state/run_history.json`で
+重複送信を防いでいる。
 
-`stock_nikkei` was implemented first, but Yahoo Finance / yfinance can return no
-data or fail depending on network conditions, Yahoo endpoint behavior, ticker
-availability, or local firewall/proxy state. This is treated as an expected
-runtime failure mode:
+`stock_nikkei`が最初に実装されたが、Yahoo Finance / yfinanceはネットワーク状況、
+Yahooのエンドポイント挙動、銘柄の有無、ローカルのファイアウォール/プロキシ状態に
+よってはデータを返さない、または失敗することがある。これは想定内の実行時失敗として
+扱う:
 
-- `stock_nikkei.json` is still written with `status=error`.
-- `report_html` still generates a report and shows the fetch failure.
-- The batch can continue to Gmail/report generation instead of crashing on a
-  market data outage.
+- `stock_nikkei.json`には`status=error`で記録される。
+- `report_html`はレポートを生成し、取得失敗を表示する。
+- 市場データ障害でクラッシュせず、Gmail送信・レポート生成まで継続できる。
 
-## Current Next Module
+## 当時の次期モジュール
 
-The next useful data module is `stock_dividend`.
+次に有用なデータモジュールは`stock_dividend`だった。
 
-Purpose:
+目的:
 
-- Track RYLD and SDIV dividend timing.
-- Estimate the current action phase from the next ex-dividend date.
-- Add the result to the HTML report so the mail says whether the period is
-  `buy_window`, `buy_now`, `hold`, `sell_start`, `sell_now`, `neutral`, or
-  `unknown`.
+- RYLDとSDIVの配当タイミングを追跡する。
+- 次回の権利落ち日から現在のアクションフェーズを推定する。
+- 結果をHTMLレポートに追加し、メールで`buy_window`・`buy_now`・`hold`・
+  `sell_start`・`sell_now`・`neutral`・`unknown`のいずれかを示す。
 
-The first version should use yfinance when possible and degrade to `unknown`
-when the next ex-dividend date is not available.
+初版はyfinanceを可能な限り使い、次回権利落ち日が取得できない場合は`unknown`に
+フォールバックする。
 
-## Dividend Schedule Fallback
+## 配当スケジュールのフォールバック
 
-After the first mail test, yfinance could not connect to Yahoo Finance from the
-batch environment. Gmail delivery and HTML generation were verified, but market
-data retrieval was not reliable enough to be the only source for RYLD/SDIV
-timing.
+初回のメールテスト後、バッチ実行環境からyfinanceがYahoo Financeに接続できなかった。
+Gmail配信とHTML生成は検証済みだったが、市場データ取得はRYLD/SDIVのタイミングの
+唯一の情報源とするには信頼性が不十分だった。
 
-The dividend module was therefore changed to use a configured schedule first:
+そのため配当モジュールは、まず設定済みスケジュールを使うように変更した:
 
-- `config.json` `dividend_schedule.targets` stores the next ex-dividend date.
-- The batch still attempts yfinance for price/yield details.
-- If yfinance fails, the configured date is still used to calculate the phase.
-- The report shows the date source and confidence so estimated dates do not look
-  like silently verified market data.
+- `config.json`の`dividend_schedule.targets`に次回権利落ち日を保存する。
+- バッチは引き続き価格・利回り詳細をyfinanceで取得しようとする。
+- yfinanceが失敗しても、設定済みの日付を使ってフェーズを計算する。
+- レポートには日付の出所と確度を表示し、推定日付が静かに検証済みの市場データの
+  ように見えないようにする。
 
-Current seed dates were researched from public pages:
+当時の初期日付は公開ページから調査した:
 
-- Global X fund pages confirm monthly distributions for RYLD and SDIV.
-- Dividend.com history showed RYLD distributions through `2026-05-18`.
-- Dividend.com history showed SDIV distributions through `2026-06-03`.
+- Global Xのファンドページで、RYLDとSDIVの毎月分配を確認。
+- Dividend.comの履歴で、RYLDの分配が`2026-05-18`まで確認できた。
+- Dividend.comの履歴で、SDIVの分配が`2026-06-03`まで確認できた。
 
-The configured future dates should be reviewed and updated before each target
-month once Global X or another reliable source publishes the next distribution
-calendar.
+設定済みの将来日付は、Global Xなど信頼できる情報源が次回分配カレンダーを公開次第、
+各対象月の前に見直し・更新する必要がある。
 
-## Watchlist Module
+## ウォッチリストモジュール
 
-`stock_watchlist` was added after the dividend timing module.
+`stock_watchlist`は配当タイミングモジュールの後に追加した。
 
-Purpose:
+目的:
 
-- Track configured tickers from `config.json` `watchlist.tickers`.
-- Fetch the latest daily OHLCV data with yfinance.
-- Calculate the change and percentage change from the previous trading day.
-- Calculate additional movement versus two and three trading days ago from the
-  same 10-day yfinance history. This does not add extra API calls.
-- Sort the report by `change_pct` descending so the strongest names appear
-  first.
-- Continue when individual tickers fail and show those failures as warnings in
-  the HTML report.
-- Display watchlist results separately for Japanese stocks and US stocks.
-- Display watchlist cards in a two-column mobile-mail layout.
-- Show each card's previous-day change, two-trading-day change, and
-  three-trading-day change with green/red coloring.
-- Prefer configured Japanese/Katakana names over yfinance English names so the
-  report is easier to scan in mail.
+- `config.json`の`watchlist.tickers`に設定された銘柄を追跡する。
+- yfinanceで最新の日次OHLCVデータを取得する。
+- 前営業日比の変化額・変化率を計算する。
+- 同じ10日分のyfinance履歴から、2営業日前・3営業日前との追加の値動きも計算する
+  (追加のAPI呼び出しは発生しない)。
+- `change_pct`の降順でレポートをソートし、値動きが大きい銘柄を先頭に表示する。
+- 個別銘柄が失敗しても処理を継続し、HTMLレポートに警告として表示する。
+- 日本株と米国株を分けて表示する。
+- モバイルメール向けの2カラムレイアウトでウォッチリストカードを表示する。
+- 各カードに前日比・2営業日比・3営業日比を、緑/赤の色分けで表示する。
+- レポートをメールで見やすくするため、yfinanceの英語名より設定済みの
+  日本語/カタカナ名を優先する。
 
-The configured list has been narrowed to the current watch targets:
+設定済みの銘柄リストは現在の監視対象に絞り込んだ:
 
 - `8035.T`
 - `1570.T`
@@ -346,77 +336,191 @@ The configured list has been narrowed to the current watch targets:
 - `AAPL`
 - `NVDA`
 
-## AI Summary Module
+## AI要約モジュール
 
-`ai_summary` was added to place a short Gemini-generated overview at the top of
-the HTML mail.
+`ai_summary`は、HTMLメールの先頭にGemini生成の短い概況を置くために追加した。
 
-Important premise passed to Gemini:
+Geminiに渡す重要な前提:
 
-- Nikkei 225 futures can include overnight movement.
-- The normal Japanese market comparison should use the Nikkei average and TOPIX,
-  not Nikkei 225 futures versus TOPIX.
-- Nikkei 225 futures should be compared with the Nikkei average as supplemental
-  context for overnight/futures-side strength.
-- TOPIX is represented by the TOPIX-linked ETF `1306.T`.
-- `1306.T` is previous business day's regular Tokyo market data, not overnight
-  TOPIX futures data.
-- The comparison is therefore a market context note, not a strict same-session
-  comparison.
+- 日経225先物は夜間の値動きを含みうる。
+- 通常の日本市場比較には、日経225先物対TOPIXではなく、日経平均とTOPIXを使うべき。
+- 日経225先物は、夜間/先物側の強弱を補足する文脈として日経平均と比較すべき。
+- TOPIXはTOPIX連動ETF`1306.T`で代表させる。
+- `1306.T`は夜間のTOPIX先物データではなく、前営業日の通常の東京市場データである。
+- したがってこの比較は、厳密な同時間帯比較ではなく市場文脈のメモとして扱う。
 
-The module reads `GEMINI_API_KEY` from `.env`. If the key is missing or the API
-call fails, the batch still continues and the report is generated without the AI
-summary.
+このモジュールは`.env`から`GEMINI_API_KEY`を読み込む。キーが無い、またはAPI呼び出しが
+失敗した場合でも、バッチは継続しAI要約なしでレポートが生成される。
 
-The AI model was switched from `gemini-3.5-flash` to
-`gemini-3.1-flash-lite` to test lower daily running cost. If summary quality is
-not sufficient, the model can be changed back in `config.json`.
+日次運用コストを下げるテストのため、AIモデルは`gemini-3.5-flash`から
+`gemini-3.1-flash-lite`に切り替えた。要約品質が不十分な場合は`config.json`で
+元に戻すことができる。
 
-## Midday Market News
+## 昼のマーケットニュース
 
-A `12:15` active window was added for a midday report after the Japanese market
-morning session.
+日本市場の午前立会後の昼レポート用に、`12:15`の稼働時間帯を追加した。
 
-`market_news` fetches Google News RSS search results before `ai_summary` runs.
-The default searches use three source groups and keep up to 24 recent items:
+`market_news`は`ai_summary`の実行前にGoogle News RSSの検索結果を取得する。
+デフォルトの検索は3つの情報源グループを使い、最新24件までを保持する:
 
-- Broad Google News searches
-- Kabutan-focused Google News searches
-- Reuters-focused Google News searches
+- Google Newsでの広い検索
+- 株探に絞ったGoogle News検索
+- Reutersに絞ったGoogle News検索
 
-The searches focus on:
+検索の焦点:
 
-- Japanese stock news broadly
-- Tokyo stock market news
-- Individual stock catalysts and disclosures
-- Sector, industry, theme, rating, and target-price related news
+- 日本株全般のニュース
+- 東京株式市場のニュース
+- 個別銘柄の材料・開示
+- セクター・業種・テーマ・レーティング・目標株価関連のニュース
 
-The collected headlines are passed to Gemini so the AI summary can mention
-public Japanese-stock news context. News links are not shown in the mail body;
-the mail should contain the AI-written summary of sectors, themes, and notable
-Japanese stock moves instead.
+収集した見出しはGeminiに渡され、AI要約が公開されている日本株のニュース文脈に
+言及できるようにする。ニュースリンクはメール本文に表示せず、代わりにAIが書いた
+セクター・テーマ・注目される日本株の値動きの要約を掲載する。
 
-## News Movers Module
+## ニュース連動値動き銘柄モジュール
 
-`news_movers` was added after `market_news`.
+`news_movers`は`market_news`の後に追加した。
 
-Purpose:
+目的:
 
-- Use `src/data/data_j.csv` as the listed-company dictionary.
-- Use `src/data/data_j_aliases.json` as a small local alias dictionary for
-  abbreviated names such as `東エレク` or `キオクシアHD`.
-- Match news headlines against the CSV `銘柄名` and configured aliases by simple
-  containment.
-- Do not apply spelling-variation correction for now.
-- Convert the CSV into `src/.cache/listed_companies.json` at runtime so normal
-  processing can use a simple JSON dictionary.
-- Fetch matched tickers with yfinance and write `output/news_movers.json`.
-- Show matched movers from this output in the HTML mail as `ニュースに出た銘柄`.
-- Show both rising and falling matched stocks, colored by price movement.
+- `src/data/data_j.csv`を上場企業の辞書として使う。
+- `src/data/data_j_aliases.json`を、「東エレク」「キオクシアHD」のような略称向けの
+  小さなローカルエイリアス辞書として使う。
+- ニュース見出しをCSVの`銘柄名`と設定済みエイリアスに対して、単純な包含判定で照合する。
+- 表記ゆれの補正は今のところ行わない。
+- CSVは実行時に`src/.cache/listed_companies.json`に変換し、通常処理はシンプルな
+  JSON辞書を使えるようにする。
+- 照合できた銘柄をyfinanceで取得し、`output/news_movers.json`に書き出す。
+- この出力からマッチした銘柄をHTMLメールに`ニュースに出た銘柄`として表示する。
+- 上昇・下落どちらのマッチ銘柄も、値動きに応じた色分けで表示する。
 
-Noise control:
+ノイズ対策:
 
-- The match uses company names only, not numeric codes.
-- Very short company names are skipped by `news_movers.min_name_length`.
-- The match requires a basic text boundary around the company name so names such
-  as `ニックス` do not match inside `ＳＫハイニックス`.
+- 照合は銘柄コードではなく企業名のみを使う。
+- 極端に短い企業名は`news_movers.min_name_length`でスキップする。
+- 企業名の前後に基本的な文字境界を要求し、「ニックス」が「ＳＫハイニックス」の中で
+  誤マッチしないようにする。
+
+## post_x_magazineモジュール(2026-07-13 / 2026-07-14)
+
+`post_x_magazine`は、本番のX投稿モジュールとして`post_x_note`を置き換えた。
+`config.json`の`post_x_magazine.magazines`に設定されたマガジンをローテーションし、
+未投稿の記事を選び、5パート構成のXスレッド(メイン投稿1本＋リプライ4本)を組み立てる。
+
+通知の挙動(夜間レポート送信と共有する`mail_gmail.send_html_mail`の上に構築):
+
+- 成功・失敗・プレビュー・通知のみ、どの実行でも必ず1通メールを送信する。
+  本文には常にSummaryと5投稿すべてを一覧表示し、失敗した投稿があれば`ERROR`と
+  理由を表示する。
+- `POST_X_MAGAZINE_PREVIEW=1`と`POST_X_MAGAZINE_NOTIFY_ONLY=1`はどちらも実際の
+  X投稿をスキップする。通知のみモードはさらに実際の通知メールを送信するので、
+  投稿せずに生成されたスレッドを確認できる。
+
+実際の21:00実行で重複・単語途中切れのスレッドが確認され、原因を調査して修正した:
+
+- Geminiへのプロンプトが、コードが分割に使う`---THREAD---`区切りを使うよう
+  指示していなかった。そのため(フォールバックでない)Gemini呼び出しが成功しても、
+  実質1パート＋空3パートに潰れることがあった。プロンプトを明示的にし、
+  Geminiの結果を採用する条件を`any(parts)`から`all(parts)`(全パートが
+  空でないこと)に変更して修正した。
+- 非Gemini系のフォールバック(`_build_content_thread_parts`)は、タイトルと
+  マガジン名を記事本文と同じ文分割対象のテキストに混ぜていた。どちらも末尾に
+  句読点がないため、単独で成立せず隣接する文と融合してしまい、投稿1にタイトルが
+  重複し、マガジン名が末尾のチャンクに混入していた。
+- 記事が短いと後半の投稿でチャンクグループが空になり、`excerpt[:60]`という
+  生のスライスにフォールバックしていた。これにより投稿1の書き出しが再度表示され、
+  しかも単語の途中で切れていた。チャンクを固定4個ずつではなく投稿間で均等に
+  配分し、キャッシュされた本文の不完全な末尾(有料部分/プレビューの切れ目)を
+  分割前にトリムし、ASCIIの`,`を区切りとして扱わないようにして修正した
+  (これらの記事では`,`はポーズではなく`18,000円`のような桁区切りとして
+  使われることが多いため)。
+- 修正後、キャッシュ済み113記事すべてに対して検証し、重複やほぼ空のフォールバック
+  出力がないことを確認した。
+
+閲覧数向上のフォローアップ(2026-07-14)。実際のXアナリティクス(最初のライブ
+スレッドで1投稿あたり12〜54表示)を確認した上で対応:
+
+- 投稿1は、説明的な文ではなく、具体的な数字か体験談ベースの書き出しから
+  始まるようにした(プロンプト側の指示。フォールバック経路は新しいフックを
+  作文できないため対象外)。
+- 投稿4は、返信を誘うテーマに沿った問いかけで締めるようにした
+  (Geminiは自分で問いを作文し、フォールバック経路はマガジンID別の
+  小さな問いかけテーブルを使う)。
+- 投稿5を新設: プロフィール固定ツイート経由で他のマガジンへ誘導する短い
+  クロスプロモーション
+  (固定ツイート自体がリンクしているのは`https://note.com/fukuoka_dividend/magazines`。
+  スレッド内の投稿自体は既存の「スレッド本文にURLを入れない」ルールに従い
+  URLなしのまま、固定ツイートを見てほしいと案内するだけ)。ハッシュタグは
+  最後の投稿に付く仕様のため、投稿4から新設の投稿5に移動した。
+
+## バッチスケジュールの変更(2026-07-13)
+
+`post_x_magazine`を、既存の4つのレポートバッチ時刻を乱さず、かつ新しいWindows
+タスクスケジューラの登録も不要な形で、1日2回(朝/夜)動かす必要があった
+(登録済みタスクは既に1日中15分おきに起動している。`docs\時刻別実行仕様.md`参照)。
+
+対応: `batch_schedule`に新たに`08:00`と`21:00`を追加し、それぞれ(既存だが
+この用途では未使用だった)`schedule_modules`設定により`post_x_magazine`のみが
+動くよう制限した。他の4つの時刻(`07:00`/`09:30`/`12:15`/`22:45`)は変更せず、
+引き続きモジュール一式が動く。`post_x_magazine.run_times`も`["08:00", "21:00"]`
+に設定し、他の4時刻ではモジュール自身もスキップするようにした(多重の安全策。
+`schedule_modules`側では他の4時刻でこのモジュールを除外していないため、
+指定しなければそこでも選択されてしまう)。
+
+`run_post_x_magazine.bat`を手動オンデマンド実行用に追加した。内部では
+`main.py --force --schedule 08:00`を呼び出し、同じ`schedule_modules`の制限を
+利用して`post_x_magazine`のみを実行する(プレビューではなく本番実行)。
+
+## stock_x_trends: 検索は1回、表示は終日(2026-07-14)
+
+`stock_x_trends`には内部的なスケジュール制限がなく、4つの主要バッチ時刻
+(07:00/09:30/12:15/22:45)すべてで毎回Grok APIを呼び出し、`output/stock_x_trends.json`
+をその都度上書きしていた。一方`report_html.py`には
+`schedule_key != "07:00": return ""`というガードがあり、07:00以外のメールでは
+このセクションを非表示にしていた。つまり1日4回のGrok呼び出しのうち3回は無駄で、
+その結果は一度も表示されていなかった。
+
+どちら側が制限をかけるかを逆転させて修正した:
+
+- `stock_x_trends.py`は自身の設定から`run_times`リスト(`config.json`の
+  `stock_x_trends.run_times`、デフォルト`["07:00"]`)を読み、その時刻以外は
+  実際の検索を**出力ファイルに一切触れずに**スキップするようにした。これにより
+  朝の実際の検索結果がそのまま残る。
+- `report_html.py`はセクションを07:00限定にする制限を外し、常に
+  `output/stock_x_trends.json`の現在の中身をそのまま表示するようにした。
+
+結果として、Grok呼び出しは1日4回から1回に減り、朝のXトレンド結果が
+09:30/12:15/22:45のメールにも(07:00だけでなく)表示されるようになった。
+
+## market_newsクエリの文字化け(2026-07-13)
+
+`config.json`の`market_news.sources`/`queries`/`exclude_title_keywords`が、
+どこかの時点で文字化けしていた(原因は特定できていない。Windows上でのエディタ/
+ツール保存時のエンコーディング不一致の可能性)。文字化けしたテキストを使う
+Google News RSSクエリはすべて0件を返すため、`market_news`は少なくとも2日間
+(2026-07-12・07-13、`logs/task_runner_*.log`で確認)、毎回`no recent news items`
+というログを出し、結果として`ai_summary`のニュースセクションには要約する
+材料が何もない状態だった。
+
+コミット`668fa9d`(`config.json`がまだ読める状態だった最後のコミット)から
+正常なクエリテキストを復元して修正した。修正後`market_news.run()`が実際の
+ニュース記事を取得すること(修正後1回目の実行で22件)、および前コミットとの
+JSON差分が`market_news`のキーのみに限定されており他の設定値が変わっていない
+ことを確認した。
+
+`dividend_schedule.targets.*.source`の引用文字列にも同様の文字化けがあるが、
+そのままにしてある(メール本文には表示されない見た目だけの問題であり、
+今回は深追いしていない)。
+
+## stock_watchlist: 10日分の履歴(2026-07-14)
+
+ウォッチリストは既にyfinanceから`period="10d"`を取得していた。これは名前に
+反して、10カレンダー日ではなく正確に10**営業**日分の行を返す(`"11d"`/`"12d"`/
+`"15d"`もそれぞれ指定した本数を正確に返すことを実際に確認した)。しかし
+`_fetch_target`は`hist["Close"].tail(6)`しか使っておらず、直近6件の終値
+(前日比5日分)しか計算していなかった。せっかく取得した10行のうち4行が
+無駄になっていた。
+
+`period="15d"`(少し余裕を持たせる)と`.tail(11)`(終値11件→前日比10件)に
+変更し、メールの銘柄別トレンド履歴が5日分から10日分表示されるようにした。

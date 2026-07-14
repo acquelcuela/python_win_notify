@@ -2,7 +2,6 @@
 import html
 import json
 import logging
-import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -520,9 +519,17 @@ def _stock_x_trends_section(root: Path) -> str:
     if not payload or payload.get("status") != "ok" or not payload.get("data"):
         return ""
 
-    schedule_key = os.getenv("BATCH_SCHEDULE_KEY", "").strip()
-    if schedule_key and schedule_key != "07:00":
-        return ""
+    generated_label = html.escape(payload.get("generated_at", "-"))
+    staleness_note = ""
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        generated_label = generated_at.astimezone(JST).strftime("%Y-%m-%d %H:%M JST")
+        if generated_at.astimezone(JST).date() != datetime.now(JST).date():
+            staleness_note = "<div class=\"muted\">⚠ 本日分の検索結果ではありません</div>"
+    except (TypeError, ValueError):
+        pass
 
     data = payload["data"]
     keywords = data.get("common_keywords") or data.get("trending_keywords") or []
@@ -549,7 +556,8 @@ def _stock_x_trends_section(root: Path) -> str:
     return f"""
     <section class="panel">
       <div class="section-title">Xトレンド銘柄</div>
-      <div class="muted">生成時刻: {html.escape(payload.get("generated_at", "-"))}</div>
+      <div class="muted">検索時刻: {generated_label}(1日1回・朝07:00のみ検索し、終日この結果を表示します)</div>
+      {staleness_note}
       <h3>共通キーワード</h3>
       <div style="margin-top:8px;">{keyword_html}</div>
       <h3>銘柄別結果</h3>

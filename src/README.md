@@ -1,58 +1,71 @@
 # NightlyBatchNotify
 
-Windows Task Scheduler calls `run.bat`. This version runs with Windows Python
-inside `src\.venv`; Docker is not required.
+Windows のタスクスケジューラが `run.bat` を呼び出します。このバージョンは
+`src\.venv` の中の Windows Python で動作し、Docker は不要です。
 
-## Quick Start
+## クイックスタート
 
-1. Review `config.json`.
-2. Create `.env` from `.env.example` and edit Gmail settings.
-3. Create the virtual environment:
+1. `config.json` を確認します。
+2. `.env.example` から `.env` を作成し、Gmail設定を編集します。
+3. 仮想環境を作成します:
 
 ```cmd
 setup_windows.bat
 ```
 
-4. Test manually:
+4. 手動でテスト実行します:
 
 ```cmd
 .venv\Scripts\python.exe main.py --force
 ```
 
-5. Register the scheduled task by double-clicking:
+5. ダブルクリックでスケジュールタスクを登録します:
 
 ```text
 scheduler\install_scheduled_task.bat
 ```
 
-6. Optional note-to-X runner:
+6. X投稿マガジンモジュールだけを手動で実行します(08:00/21:00の時刻チェックを
+   スキップしますが、実際にXへ投稿する本番実行です):
+
+```text
+run_post_x_magazine.bat
+```
+
+7. 旧世代のnote→X投稿ランナー(現在`config.json`でOFF):
 
 ```text
 run_post_x_note.bat
 ```
 
-7. Preview-only note-to-X runner:
+8. プレビュー専用のnote→X投稿ランナー:
 
 ```text
 run_post_x_note_preview.bat
 ```
 
-## Scheduler Helpers
+## スケジューラ関連
 
-- Register: `scheduler\install_scheduled_task.bat`
-- Remove: `scheduler\uninstall_scheduled_task.bat`
-- Check: `scheduler\check_scheduled_task.bat`
+- 登録: `scheduler\install_scheduled_task.bat`
+- 削除: `scheduler\uninstall_scheduled_task.bat`
+- 確認: `scheduler\check_scheduled_task.bat`
 
-The registered task runs every 15 minutes. Processing still happens only inside
-the `.env` schedule windows.
+登録したタスクは1日中15分おきに起動します。実際の処理は`config.json`の
+`batch_schedule`で定義された時刻枠(現在は`07:00`、`08:00`、`09:30`、`12:15`、
+`21:00`、`22:45`、平日のみ)の中でのみ実行されます。`08:00`/`21:00`は
+`schedule_modules`により`post_x_magazine`のみが動き、他の4つはモジュール一式が
+動きます。詳細は`docs\時刻別実行仕様.md`を参照してください(`stock_x_trends`が
+07:00にしか検索しないのにその日のメール全てに結果が表示される、といった
+モジュールごとの自己制限についても記載しています)。
 
-`run_post_x_note.bat` is separate from the main scheduler and stays off by
-default through `config.json`.
+`run_post_x_note.bat`はメインのスケジューラとは別系統で、`config.json`により
+常時OFFです。ライブのX投稿モジュールとしては`post_x_magazine`がこれを
+置き換えました。
 
-`run_post_x_note_preview.bat` reads `state\post_x_note_preview_article.json`,
-builds the draft text, and does not post to X.
+`run_post_x_note_preview.bat`は`state\post_x_note_preview_article.json`を
+読み込み、下書きテキストを作成しますが、Xへの投稿は行いません。
 
-## Docs
+## ドキュメント
 
-- Current specification: `docs\時刻別実行仕様.md`
-- Progress and decisions: `docs\progress_notes.md`
+- 現行仕様: `docs\時刻別実行仕様.md`
+- 進捗と意思決定の記録: `docs\progress_notes.md`

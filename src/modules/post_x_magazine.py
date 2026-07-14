@@ -35,6 +35,7 @@ JST = timezone(timedelta(hours=9), "JST")
 DEFAULT_NOTE_CREATOR = "fukuoka_dividend"
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
 X_MAX_CHARS = 280
+THREAD_PARTS_COUNT = 5  # 1 primary post + 4 replies (last reply promotes other magazines)
 
 
 def _is_truthy_env(name: str) -> bool:
@@ -107,7 +108,7 @@ def _send_post_notification(
             reason=reason,
         )
     ]
-    for index in range(4):
+    for index in range(THREAD_PARTS_COUNT):
         part = tweet_parts[index] if index < len(tweet_parts) else ""
         rows.append(
             _render_notification_block(
@@ -219,6 +220,29 @@ def _base_hashtags_for_magazine(magazine: dict) -> list[str]:
         "portfolio_rules": ["#高配当株", "#ポートフォリオ", "#資産運用", "#配当投資", "#長期投資"],
     }
     return names.get(magazine_id, ["#高配当株", "#資産運用", "#投資", "#NISA", "#長期投資"])
+
+
+def _closing_question_for_magazine(magazine: dict) -> str:
+    magazine_id = str(magazine.get("id") or "").strip()
+    questions = {
+        "high_dividend_review": "あなたなら、最初の1株に何を選びますか？",
+        "etf_index": "あなたは個別株派、それともETF派ですか？",
+        "fire_living": "配当だけで生活費を賄うなら、目標は月いくらにしますか？",
+        "tax_inheritance": "この制度、あなたの家族にも当てはまりそうですか？",
+        "portfolio_rules": "あなたのポートフォリオ、今のルールで納得できていますか？",
+    }
+    return questions.get(magazine_id, "あなたはどう考えますか？")
+
+
+def _magazine_promo_line(magazine: dict) -> str:
+    magazine_name = str(magazine.get("name") or "").strip()
+    if magazine_name:
+        return (
+            f"この投稿は「{magazine_name}」マガジンの1本です。\n"
+            "他のテーマ別マガジンはプロフィール固定ツイートにまとめています。\n"
+            "よければそちらもチェックしてみてください。"
+        )
+    return "他のテーマ別マガジンはプロフィール固定ツイートにまとめています。よければそちらもチェックしてみてください。"
 
 
 def _article_hashtags(article: dict | None, magazine: dict) -> list[str]:
@@ -372,19 +396,21 @@ def _build_prompt(article: dict | None, magazine: dict) -> str:
     article_text = _article_content_text(article)
     return (
         "あなたは日本語でXの単独投稿文を作成する役割です。\n"
-        "次のnote本文を、URLなし・replyなしで、4本の投稿に分けて要約してください。\n"
+        "次のnote本文を、URLなし・replyなしで、5本の投稿に分けて要約してください。\n"
         "制約:\n"
         "- 日本語で書く\n"
-        "- 4つの投稿本文のみを出力する\n"
-        "- 4つの投稿の間には、他の記号を一切付けずに ---THREAD--- という行だけを区切りとして入れる\n"
+        "- 5つの投稿本文のみを出力する\n"
+        "- 5つの投稿の間には、他の記号を一切付けずに ---THREAD--- という行だけを区切りとして入れる\n"
         "- ---THREAD--- 以外の見出しや番号（1本目、Post1など）は付けない\n"
         "- URLは本文に入れない\n"
         "- reply先を示す文言は入れない\n"
         "- 1本目の最初の行は、内容を表す短いキャッチコピーを【】で囲んで書く（「タイトル」という文字列自体は書かない）\n"
+        "- 1本目の【】の次の行は、具体的な金額・年数・利回りなどの数字か、体験談ふうの一文から書き始めてタイムラインで目を止めさせる（「〜について解説します」のような説明口調で始めない）\n"
         "- 1本目は導入と主題\n"
         "- 2本目は内容の具体点\n"
         "- 3本目は実用性や気づき\n"
-        "- 4本目は読後の持ち帰り\n"
+        "- 4本目は読後の持ち帰りで締め、最後の行に記事のテーマに沿った読者への問いかけを1文入れて返信を誘う（紋切り型のテンプレ文をそのまま使わず、内容に合わせた自然な問いにする）\n"
+        "- 5本目は、この投稿が「マガジン名」マガジンの1本であることに軽く触れ、他のテーマ別マガジンはプロフィール固定ツイートにまとめてあるので興味があれば見てほしいと1〜2文で自然に誘導する（宣伝口調になりすぎない）\n"
         "- 各投稿は5行で書く\n"
         "- 各行は短く、見出しっぽくしない\n"
         "- 各投稿は140文字前後に収める\n"
@@ -430,10 +456,12 @@ def _build_content_thread_parts(article: dict | None, magazine: dict) -> list[st
     title_line = title[:80] if title else (magazine_name or "要点")
     chunks = _content_chunks(article, title, excerpt, magazine_name)
 
-    # Distribute chunks evenly across the 4 posts (instead of fixed batches of
-    # 4) so a short article doesn't leave later posts empty, which previously
-    # fell back to re-slicing the excerpt from its start - duplicating earlier
-    # posts and cutting mid-word.
+    # Distribute chunks evenly across the first 4 posts (instead of fixed
+    # batches of 4) so a short article doesn't leave later posts empty, which
+    # previously fell back to re-slicing the excerpt from its start -
+    # duplicating earlier posts and cutting mid-word. The 5th post is not
+    # filled from article content at all; it's a dedicated cross-promo for
+    # the other magazines (see below).
     bucket_size = max(1, -(-len(chunks) // 4))
     grouped = [chunks[i : i + bucket_size] for i in range(0, len(chunks), bucket_size)]
     while len(grouped) < 4:
@@ -458,8 +486,12 @@ def _build_content_thread_parts(article: dict | None, magazine: dict) -> list[st
                 # empty-string filter drops it instead of posting a duplicate.
                 parts.append("")
                 continue
+        if index == 3:
+            lines = lines + [_closing_question_for_magazine(magazine)]
         parts.append(_format_multiline_tweet("\n".join(lines), max_lines=5)[:220].rstrip())
-    return parts[:4]
+
+    parts.append(_format_multiline_tweet(_magazine_promo_line(magazine), max_lines=5)[:220].rstrip())
+    return parts[:THREAD_PARTS_COUNT]
 
 
 def _build_thread_parts(article: dict | None, magazine: dict, gemini_api_key: str | None, model: str) -> list[str]:
@@ -471,13 +503,17 @@ def _build_thread_parts(article: dict | None, magazine: dict, gemini_api_key: st
         try:
             text = _call_gemini(gemini_api_key, model, _build_prompt(article, magazine))
             raw_parts = [part.strip() for part in text.split("---THREAD---") if part.strip()]
-            parts = [_format_multiline_tweet(part, max_lines=5)[:220].rstrip() for part in raw_parts[:4]]
-            while len(parts) < 4:
+            parts = [
+                _format_multiline_tweet(part, max_lines=5)[:220].rstrip()
+                for part in raw_parts[:THREAD_PARTS_COUNT]
+            ]
+            while len(parts) < THREAD_PARTS_COUNT:
                 parts.append("")
             if all(parts):
-                return parts[:4]
+                return parts[:THREAD_PARTS_COUNT]
             logging.warning(
-                "[post_x_magazine] Gemini response did not split into 4 usable parts (got %d); using content fallback",
+                "[post_x_magazine] Gemini response did not split into %d usable parts (got %d); using content fallback",
+                THREAD_PARTS_COUNT,
                 sum(1 for part in parts if part),
             )
         except Exception as exc:
@@ -808,7 +844,7 @@ def run(root: Path) -> None:
         reply_results: list[dict] = []
         parent_tweet_id = ""
         candidate_groups = [thread_parts, fallback_parts]
-        for index in range(4):
+        for index in range(THREAD_PARTS_COUNT):
             if index == 0:
                 candidate_texts = [group[0] for group in candidate_groups if len(group) > 0 and str(group[0]).strip()]
             else:

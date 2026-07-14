@@ -37,7 +37,8 @@
   "stock_x_trends": {
     "enabled": true,
     "model": "grok-4.3",
-    "max_tokens": 1000
+    "max_tokens": 1000,
+    "run_times": ["07:00"]
   },
   "market_news": {
     "sources": [

@@ -47,7 +47,7 @@ def _load_targets(root: Path) -> list[dict]:
 def _fetch_target(target: dict) -> dict:
     ticker_symbol = target["ticker"]
     ticker = yf.Ticker(ticker_symbol)
-    hist = ticker.history(period="10d", interval="1d", auto_adjust=False)
+    hist = ticker.history(period="15d", interval="1d", auto_adjust=False)
     hist = hist.dropna(subset=["Close"])
     if len(hist) < 2:
         raise ValueError(f"Not enough price data returned for {ticker_symbol}.")
@@ -59,7 +59,7 @@ def _fetch_target(target: dict) -> dict:
     change = close - prev_close
     change_pct = (change / prev_close * 100) if prev_close else 0.0
     daily_changes = []
-    closes = hist["Close"].tail(6)
+    closes = hist["Close"].tail(11)
     for idx in range(len(closes) - 1, 0, -1):
         current = float(closes.iloc[idx])
         previous_close = float(closes.iloc[idx - 1])
