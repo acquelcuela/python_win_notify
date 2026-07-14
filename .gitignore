@@ -29,6 +29,8 @@ pic/
 # X-post images (personal content, not tracked; README.md still tracked)
 src/post_images/*
 !src/post_images/README.md
+src/post_images_posted/*
+!src/post_images_posted/README.md
 
 # OS/editor noise
 .DS_Store
