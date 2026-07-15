@@ -5,12 +5,12 @@ cd /d "%~dp0"
 
 echo post_x_magazine manual runner
 echo.
-echo This runs main.py --force --schedule 08:00, which (via config.json's
-echo schedule_modules) executes ONLY the post_x_magazine module - no other
-echo batch modules, no report/mail pipeline.
+echo This runs main.py --force --schedule 07:30, which (via config.json's
+echo batch_schedule modules list) executes ONLY the post_x_magazine module -
+echo no other batch modules, no report/mail pipeline.
 echo.
 echo NOTE: This is a live run, not a preview. It will actually post to X
-echo and send the result by email, the same as the scheduled 08:00/21:00 runs.
+echo and send the result by email, the same as the scheduled 07:30/21:00 runs.
 echo.
 
 if not exist logs mkdir logs
@@ -33,7 +33,7 @@ if not exist "%VENV_PYTHON%" (
   exit /b 1
 )
 
-"%VENV_PYTHON%" main.py --force --schedule 08:00 >> "%TASK_LOG%" 2>&1
+"%VENV_PYTHON%" main.py --force --schedule 07:30 >> "%TASK_LOG%" 2>&1
 set "EXIT_CODE=%ERRORLEVEL%"
 >> "%TASK_LOG%" echo [%date% %time%] post_x_magazine manual run finished. Exit code: %EXIT_CODE%
 >> "%TASK_LOG%" echo.

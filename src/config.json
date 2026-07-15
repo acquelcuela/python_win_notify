@@ -4,7 +4,7 @@
       "time": "07:00",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
-    {"time": "08:00", "days": "all", "modules": ["post_x_magazine"]},
+    {"time": "07:30", "days": "all", "modules": ["post_x_magazine"]},
     {
       "time": "09:30",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
