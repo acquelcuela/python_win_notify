@@ -27,9 +27,21 @@ from modules.post_x_note import (
     _resolve_path,
     _save_cached_articles,
     _save_history,
+    _save_text_values,
     _strip_html,
     _upload_media_to_x,
 )
+
+
+class SingleLineTweetGenerated(Exception):
+    """Raised when Gemini returns an otherwise-valid thread that contains a
+    thin, single-line post. Callers should treat this as a hard failure
+    (no posting, no falling back to the mechanical splitter) rather than a
+    normal Gemini error."""
+
+    def __init__(self, indices: list[int]):
+        self.indices = indices
+        super().__init__(f"Gemini generated single-line post(s) at index: {indices}")
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -503,15 +515,26 @@ def _build_thread_parts(article: dict | None, magazine: dict, gemini_api_key: st
             ]
             while len(parts) < THREAD_PARTS_COUNT:
                 parts.append("")
-            if all(parts):
-                return parts[:THREAD_PARTS_COUNT]
-            logging.warning(
-                "[post_x_magazine] Gemini response did not split into %d usable parts (got %d); using content fallback",
-                THREAD_PARTS_COUNT,
-                sum(1 for part in parts if part),
-            )
         except Exception as exc:
             logging.warning("[post_x_magazine] Gemini fallback used: %s", exc)
+            return _build_content_thread_parts(article, magazine)
+
+        if all(parts):
+            single_line_indices = [
+                index + 1 for index, part in enumerate(parts) if len(part.splitlines()) <= 1
+            ]
+            if single_line_indices:
+                # A genuine Gemini failure falls back to the mechanical
+                # splitter, but a single-line post is a quality problem the
+                # splitter can't fix either - raise instead of falling back
+                # so the caller can skip posting and flag the article.
+                raise SingleLineTweetGenerated(single_line_indices)
+            return parts[:THREAD_PARTS_COUNT]
+        logging.warning(
+            "[post_x_magazine] Gemini response did not split into %d usable parts (got %d); using content fallback",
+            THREAD_PARTS_COUNT,
+            sum(1 for part in parts if part),
+        )
 
     return _build_content_thread_parts(article, magazine)
 
@@ -589,6 +612,15 @@ def _mark_image_as_posted(image_path: Path) -> None:
     if destination.exists():
         destination = posted_dir / f"{image_path.stem}_{int(time.time())}{image_path.suffix}"
     image_path.rename(destination)
+
+
+def _add_to_exclude_keys(path: Path, article_key: str) -> None:
+    article_key = str(article_key or "").strip()
+    if not article_key:
+        return
+    values = _load_text_values(path)
+    values.add(article_key)
+    _save_text_values(path, values)
 
 
 def _select_article(
@@ -744,7 +776,43 @@ def run(root: Path) -> None:
         logging.info("[post_x_magazine] skipped: no eligible pair")
         return
 
-    thread_parts = _build_thread_parts(article, magazine, gemini_api_key, model)
+    try:
+        thread_parts = _build_thread_parts(article, magazine, gemini_api_key, model)
+    except SingleLineTweetGenerated as exc:
+        reason = (
+            f"Gemini generated a single-line post at index {exc.indices}; "
+            "skipping to avoid posting a thin thread."
+        )
+        payload = _build_result_payload(
+            generated_at,
+            "error",
+            module_name="post_x_magazine",
+            reason=reason,
+            article=article,
+        )
+        payload["magazine"] = magazine
+        _dump_json(output_path, payload)
+        article_key = str(article.get("key") or "").strip() if article else ""
+        if article_key:
+            _add_to_exclude_keys(exclude_keys_path, article_key)
+            logging.info("[post_x_magazine] added article to exclude list: %s", article_key)
+        try:
+            _send_post_notification(
+                root,
+                generated_at,
+                magazine,
+                article,
+                [],
+                status="error",
+                reason=reason,
+                failed_part_index=None,
+                total_parts=0,
+            )
+        except Exception as mail_exc:
+            logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
+        logging.error("[post_x_magazine] post failed: %s", reason)
+        return
+
     thread_parts = [
         _format_multiline_tweet(part, max_lines=5)[:280].rstrip()
         for part in thread_parts
