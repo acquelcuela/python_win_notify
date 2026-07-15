@@ -534,7 +534,10 @@ def _format_multiline_tweet(text: str, max_lines: int = 5) -> str:
     cleaned = _normalize_tweet_text(text).strip()
     if not cleaned:
         return ""
-    cleaned = re.sub(r"([。！？!?])\s*", r"\1\n", cleaned)
+    # Don't break right after sentence-ending punctuation when it's immediately
+    # followed by a closing bracket (e.g. "どれ？】") - otherwise the bracket
+    # gets pushed onto its own line, separated from the title it closes.
+    cleaned = re.sub(r"([。！？!?])(?![】」』\)])\s*", r"\1\n", cleaned)
     lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
     if len(lines) > max_lines:
         lines = lines[:max_lines]
@@ -879,20 +882,29 @@ def run(root: Path) -> None:
             media_id = None
 
     posted_parts: list[str] = []
+    posted_sources: list[str] = []
     try:
         post_result = None
         reply_results: list[dict] = []
         parent_tweet_id = ""
-        candidate_groups = [thread_parts, fallback_parts]
+        candidate_groups = [("gemini", thread_parts), ("fallback", fallback_parts)]
         for index in range(THREAD_PARTS_COUNT):
             if index == 0:
-                candidate_texts = [group[0] for group in candidate_groups if len(group) > 0 and str(group[0]).strip()]
+                candidates = [
+                    (label, group[0])
+                    for label, group in candidate_groups
+                    if len(group) > 0 and str(group[0]).strip()
+                ]
             else:
-                candidate_texts = [group[index] for group in candidate_groups if len(group) > index and str(group[index]).strip()]
-            if not candidate_texts:
-                candidate_texts = [fallback_parts[index]]
+                candidates = [
+                    (label, group[index])
+                    for label, group in candidate_groups
+                    if len(group) > index and str(group[index]).strip()
+                ]
+            if not candidates:
+                candidates = [("fallback", fallback_parts[index])]
             last_error: Exception | None = None
-            for candidate_text in candidate_texts:
+            for label, candidate_text in candidates:
                 try:
                     if index == 0:
                         post_result = _post_to_x(candidate_text, media_ids=[media_id] if media_id else None)
@@ -906,12 +918,20 @@ def run(root: Path) -> None:
                         reply_results.append(reply_result)
                         parent_tweet_id = str(reply_result.get("data", {}).get("id") or "").strip() or parent_tweet_id
                     posted_parts.append(candidate_text)
+                    posted_sources.append(label)
                     break
                 except Exception as exc:
                     last_error = exc
+                    logging.warning(
+                        "[post_x_magazine] post %d (%s) failed, trying next candidate: %s",
+                        index + 1,
+                        label,
+                        exc,
+                    )
                     continue
             else:
                 raise RuntimeError(f"Failed to post thread part {index + 1}: {last_error}") from last_error
+        logging.info("[post_x_magazine] posted sources: %s", posted_sources)
     except Exception as exc:
         failed_part_index = None
         match = re.search(r"part (\d+)", str(exc))
