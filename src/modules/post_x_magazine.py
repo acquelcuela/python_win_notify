@@ -203,14 +203,6 @@ def _next_index(current_index: int, length: int) -> int:
     return (current_index + 1) % length
 
 
-def _schedule_allowed(run_times: list[str], schedule_key: str | None) -> bool:
-    if not run_times:
-        return True
-    if not schedule_key:
-        return True
-    return schedule_key in run_times
-
-
 def _base_hashtags_for_magazine(magazine: dict) -> list[str]:
     magazine_id = str(magazine.get("id") or "").strip()
     names = {
@@ -653,7 +645,6 @@ def run(root: Path) -> None:
     config = _module_config(root)
     enabled = bool(config.get("enabled", False))
     magazines = _load_magazines(config.get("magazines", []))
-    run_times = [str(value).strip() for value in config.get("run_times", []) if str(value).strip()] if isinstance(config.get("run_times", []), list) else []
     rotation_path = _resolve_path(root, config.get("rotation_state_file"), "state/post_x_magazine_rotation.json")
     history_path = _resolve_path(root, config.get("history_file"), "state/post_x_magazine_history.json")
     cache_path = _resolve_path(root, config.get("cache_file"), "state/post_x_magazine_cache.json")
@@ -668,7 +659,6 @@ def run(root: Path) -> None:
     force_overflow_test = _is_truthy_env("POST_X_MAGAZINE_FORCE_OVERFLOW_TEST")
     source_article_file = os.getenv("POST_X_MAGAZINE_SOURCE_FILE", "").strip()
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip() or None
-    schedule_key = os.getenv("BATCH_SCHEDULE_KEY", "").strip() or None
 
     if not enabled and not preview_mode and not source_article_file and not notify_only_mode:
         payload = _build_result_payload(
@@ -679,17 +669,6 @@ def run(root: Path) -> None:
         )
         _dump_json(output_path, payload)
         logging.info("[post_x_magazine] skipped: disabled in config.json")
-        return
-
-    if not _schedule_allowed(run_times, schedule_key):
-        payload = _build_result_payload(
-            generated_at,
-            "skipped",
-            module_name="post_x_magazine",
-            reason=f"Current schedule is not included in post_x_magazine.run_times: {schedule_key or '-'}",
-        )
-        _dump_json(output_path, payload)
-        logging.info("[post_x_magazine] skipped: schedule not allowed (%s)", schedule_key or "-")
         return
 
     if source_article_file:

@@ -1,22 +1,26 @@
 {
   "batch_schedule": [
-    "07:00",
-    "08:00",
-    "09:30",
-    "12:15",
-    "21:00",
-    "22:45"
+    {
+      "time": "07:00",
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+    },
+    {"time": "08:00", "days": "all", "modules": ["post_x_magazine"]},
+    {
+      "time": "09:30",
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+    },
+    {
+      "time": "12:15",
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+    },
+    {"time": "21:00", "days": "all", "modules": ["post_x_magazine"]},
+    {
+      "time": "22:45",
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+    }
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,
-  "schedule_modules": {
-    "08:00": [
-      "post_x_magazine"
-    ],
-    "21:00": [
-      "post_x_magazine"
-    ]
-  },
   "modules": {
     "stock_nikkei": true,
     "stock_watchlist": true,
@@ -37,8 +41,7 @@
   "stock_x_trends": {
     "enabled": true,
     "model": "grok-4.3",
-    "max_tokens": 1000,
-    "run_times": ["07:00"]
+    "max_tokens": 1000
   },
   "market_news": {
     "sources": [
@@ -96,10 +99,6 @@
   "post_x_magazine": {
     "enabled": true,
     "creator": "fukuoka_dividend",
-    "run_times": [
-      "08:00",
-      "21:00"
-    ],
     "history_days": 5,
     "rotation_state_file": "state/post_x_magazine_rotation.json",
     "history_file": "state/post_x_magazine_history.json",

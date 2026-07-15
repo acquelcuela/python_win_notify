@@ -12,6 +12,19 @@ from dotenv import load_dotenv
 
 JST = timezone(timedelta(hours=9), "JST")
 ROOT = Path(__file__).resolve().parent
+WEEKDAY_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+WEEKDAY_SET = {"mon", "tue", "wed", "thu", "fri"}
+WEEKEND_SET = {"sat", "sun"}
+ALL_DAYS_SET = set(WEEKDAY_NAMES)
+DAY_GROUP_ALIASES = {
+    "weekdays": WEEKDAY_SET,
+    "weekday": WEEKDAY_SET,
+    "weekend": WEEKEND_SET,
+    "weekends": WEEKEND_SET,
+    "all": ALL_DAYS_SET,
+    "daily": ALL_DAYS_SET,
+    "everyday": ALL_DAYS_SET,
+}
 MODULE_ORDER = [
     "stock_nikkei",
     "stock_watchlist",
@@ -67,15 +80,6 @@ def load_config() -> dict:
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
-def get_schedule_value() -> str:
-    schedule = CONFIG.get("batch_schedule", ["00:00", "07:00"])
-    if isinstance(schedule, str):
-        return schedule
-    if isinstance(schedule, list):
-        return ",".join(str(item) for item in schedule)
-    raise ValueError("config.json batch_schedule must be a string or list.")
-
-
 def get_window_minutes() -> int:
     return int(CONFIG.get("batch_window_minutes", 14))
 
@@ -84,27 +88,73 @@ def is_weekday_only_enabled() -> bool:
     return bool(CONFIG.get("batch_weekdays_only", True))
 
 
-def is_japanese_weekday(now: datetime) -> bool:
-    return now.weekday() < 5
+def _default_schedule_days() -> set[str]:
+    return set(WEEKDAY_SET) if is_weekday_only_enabled() else set(ALL_DAYS_SET)
+
+
+def _normalize_days(value) -> set[str]:
+    if isinstance(value, str):
+        key = value.strip().lower()
+        if key in DAY_GROUP_ALIASES:
+            return set(DAY_GROUP_ALIASES[key])
+        if key in WEEKDAY_NAMES:
+            return {key}
+        raise ValueError(f"Invalid day value: '{value}'.")
+    if isinstance(value, list):
+        days: set[str] = set()
+        for item in value:
+            days |= _normalize_days(item)
+        return days
+    raise ValueError(f"Invalid days entry: {value!r}.")
+
+
+def parse_schedule_entries(raw_schedule=None) -> list[dict]:
+    """Returns a list of schedule slots, each evaluated in this order:
+    time -> days (is this slot active right now) -> modules (what to run
+    if so). A slot is {"time": time, "time_str": "HH:MM", "days": set[str],
+    "modules": list[str] | None}. modules=None means "run every enabled
+    module" (MODULE_ORDER filtered by module_enabled)."""
+    if raw_schedule is None:
+        raw_schedule = CONFIG.get("batch_schedule", ["07:00"])
+    if isinstance(raw_schedule, str):
+        raw_schedule = [part.strip() for part in raw_schedule.split(",") if part.strip()]
+    if not isinstance(raw_schedule, list):
+        raise ValueError("config.json batch_schedule must be a string or list.")
+
+    default_days = _default_schedule_days()
+    entries: list[dict] = []
+    for item in raw_schedule:
+        if isinstance(item, str):
+            time_str = item.strip()
+            days = default_days
+            modules = None
+        elif isinstance(item, dict):
+            time_str = str(item.get("time") or "").strip()
+            days = _normalize_days(item["days"]) if item.get("days") is not None else default_days
+            modules = item.get("modules")
+            if modules is not None:
+                if not isinstance(modules, list):
+                    raise ValueError(f"batch_schedule entry for '{time_str}' has a 'modules' value that isn't an array.")
+                modules = [str(name).strip() for name in modules if str(name).strip()]
+        else:
+            raise ValueError(f"Invalid batch_schedule entry: {item!r}.")
+        if not time_str:
+            raise ValueError(f"batch_schedule entry is missing a time: {item!r}.")
+        try:
+            hour_text, minute_text = time_str.split(":", 1)
+            time_obj = time(hour=int(hour_text), minute=int(minute_text))
+        except ValueError as exc:
+            raise ValueError(f"Invalid schedule entry: '{time_str}'.") from exc
+        entries.append({"time": time_obj, "time_str": time_str, "days": days, "modules": modules})
+
+    if not entries:
+        raise ValueError("Schedule must contain at least one HH:MM entry.")
+    return entries
 
 
 def module_enabled(module_name: str) -> bool:
     modules = CONFIG.get("modules", {})
     return bool(modules.get(module_name, False))
-
-
-def _configured_schedule_modules() -> dict[str, list[str]]:
-    raw = CONFIG.get("schedule_modules", {})
-    if not isinstance(raw, dict):
-        return {}
-    normalized: dict[str, list[str]] = {}
-    for key, value in raw.items():
-        if not isinstance(value, list):
-            continue
-        modules = [str(item).strip() for item in value if str(item).strip()]
-        if modules:
-            normalized[str(key).strip()] = modules
-    return normalized
 
 
 def validate_config() -> list[str]:
@@ -118,27 +168,16 @@ def validate_config() -> list[str]:
             if not isinstance(value, bool):
                 errors.append(f"config.json modules.{module} must be true or false.")
 
-    schedule_modules = CONFIG.get("schedule_modules")
-    if schedule_modules is not None:
-        if not isinstance(schedule_modules, dict):
-            errors.append("config.json schedule_modules must be an object.")
-        else:
-            valid_schedule_keys = {item.strftime("%H:%M") for item in parse_schedule(get_schedule_value())}
-            for schedule_key, module_list in schedule_modules.items():
-                if schedule_key not in valid_schedule_keys:
-                    errors.append(f"config.json schedule_modules.{schedule_key} is not in batch_schedule.")
-                    continue
-                if not isinstance(module_list, list):
-                    errors.append(f"config.json schedule_modules.{schedule_key} must be an array.")
-                    continue
-                for module_name in module_list:
-                    if str(module_name) not in MODULE_ORDER:
-                        errors.append(
-                            f"config.json schedule_modules.{schedule_key} contains unknown module: {module_name}."
-                        )
-
     try:
-        parse_schedule(get_schedule_value())
+        schedule_entries = parse_schedule_entries()
+        for entry in schedule_entries:
+            if entry["modules"] is None:
+                continue
+            for module_name in entry["modules"]:
+                if module_name not in MODULE_ORDER:
+                    errors.append(
+                        f"config.json batch_schedule entry '{entry['time_str']}' has unknown module: {module_name}."
+                    )
     except ValueError as exc:
         errors.append(str(exc))
 
@@ -159,6 +198,7 @@ def validate_config() -> list[str]:
 
 
 def parse_schedule(value: str) -> list[time]:
+    """Parses a plain comma-separated 'HH:MM' string (used for --schedule)."""
     schedules: list[time] = []
     for raw_part in value.split(","):
         part = raw_part.strip()
@@ -176,7 +216,11 @@ def parse_schedule(value: str) -> list[time]:
 
 def is_execution_time(now: datetime) -> tuple[bool, str | None]:
     window_minutes = get_window_minutes()
-    for scheduled in parse_schedule(get_schedule_value()):
+    today_key = WEEKDAY_NAMES[now.weekday()]
+    for entry in parse_schedule_entries():
+        if today_key not in entry["days"]:
+            continue
+        scheduled = entry["time"]
         target = now.replace(
             hour=scheduled.hour,
             minute=scheduled.minute,
@@ -185,7 +229,7 @@ def is_execution_time(now: datetime) -> tuple[bool, str | None]:
         )
         diff = now - target
         if timedelta(0) <= diff <= timedelta(minutes=window_minutes):
-            return True, scheduled.strftime("%H:%M")
+            return True, entry["time_str"]
     return False, None
 
 
@@ -252,9 +296,13 @@ def load_module_runner(module_name: str):
 
 
 def resolve_modules_for_schedule(schedule_key: str | None) -> list[str]:
-    schedule_modules = _configured_schedule_modules()
-    if schedule_key and schedule_key in schedule_modules:
-        return [name for name in schedule_modules[schedule_key] if module_enabled(name)]
+    if schedule_key:
+        try:
+            for entry in parse_schedule_entries():
+                if entry["time_str"] == schedule_key and entry["modules"] is not None:
+                    return [name for name in entry["modules"] if module_enabled(name)]
+        except ValueError:
+            pass
     return [name for name in MODULE_ORDER if module_enabled(name)]
 
 
@@ -303,9 +351,6 @@ def main() -> int:
     run_key = None
     schedule_key = None
     if not args.force:
-        if is_weekday_only_enabled() and not is_japanese_weekday(now):
-            logging.info("Skipped: weekend run is disabled (%s JST).", now.strftime("%Y-%m-%d %H:%M"))
-            return 0
         should_run, matched_time = is_execution_time(now)
         if not should_run:
             logging.info("Skipped: current time is outside schedule window (%s JST).", now.strftime("%H:%M"))

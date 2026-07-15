@@ -17,7 +17,18 @@ if (-not (Test-Path -LiteralPath $ConfigFile)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
-$scheduleTimes = @($config.batch_schedule) | ForEach-Object { "$_".Trim() } | Where-Object { $_ }
+# batch_schedule entries can be a plain "HH:mm" string or an object like
+# {"time": "HH:mm", "days": [...]} for entries with a custom day-of-week
+# override; only the time portion is needed here for registration/display.
+$scheduleTimes = @($config.batch_schedule) | ForEach-Object {
+    if ($_ -is [string]) {
+        $_.Trim()
+    } elseif ($_.PSObject.Properties.Name -contains 'time') {
+        "$($_.time)".Trim()
+    } else {
+        ""
+    }
+} | Where-Object { $_ }
 
 if (-not $scheduleTimes) {
     throw "config.json batch_schedule does not contain any HH:mm entries."

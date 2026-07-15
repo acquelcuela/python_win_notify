@@ -326,23 +326,6 @@ def run(root: Path) -> None:
     model = str(config.get("model") or DEFAULT_MODEL)
     max_tokens = int(config.get("max_tokens", 1000))
     api_key = os.getenv("GROK_API_KEY", "").strip()
-    run_times = [
-        str(value).strip()
-        for value in config.get("run_times", ["07:00"])
-        if str(value).strip()
-    ] if isinstance(config.get("run_times", ["07:00"]), list) else ["07:00"]
-    schedule_key = os.getenv("BATCH_SCHEDULE_KEY", "").strip()
-
-    if run_times and schedule_key and schedule_key not in run_times:
-        # Only search once (in the early morning by default); later batch
-        # runs skip without touching output_path, so report_html keeps
-        # showing this morning's results instead of nothing.
-        logging.info(
-            "[stock_x_trends] skipped: schedule %s not in run_times %s (keeping existing output)",
-            schedule_key,
-            run_times,
-        )
-        return
 
     if not enabled:
         payload = {
