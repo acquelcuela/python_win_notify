@@ -3,11 +3,20 @@ import html
 import json
 import logging
 import re
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 JST = timezone(timedelta(hours=9), "JST")
+
+
+def _yahoo_finance_link(ticker: str) -> str:
+    ticker = str(ticker or "").strip()
+    if not ticker or ticker == "-":
+        return html.escape(ticker or "-")
+    url = f"https://finance.yahoo.co.jp/quote/{urllib.parse.quote(ticker)}"
+    return f'<a href="{url}" target="_blank" rel="noopener">{html.escape(ticker)}</a>'
 
 
 def _fmt_number(value) -> str:
@@ -236,6 +245,7 @@ def _nikkei_section(root: Path) -> str:
       <div class="section-title">日経平均 / TOPIX 市場概況</div>
       <div class="section-body">
         <div class="state-label">{change_label}</div>
+        <div class="muted"><a href="https://search.yahoo.co.jp/realtime/search?p=%E6%97%A5%E7%B5%8C%E3%80%80%E6%99%82%E9%96%93%E5%A4%96" target="_blank" rel="noopener">日経 時間外(Yahoo!リアルタイム検索)</a></div>
       </div>
       {index_grid}
       {warnings}
@@ -264,7 +274,7 @@ def _watchlist_cards(items: list[dict]) -> str:
             <td class="stock-grid-cell">
               <div class="stock-card">
                 <strong class="stock-name">{html.escape(item.get("name", ""))}</strong>
-                <div class="muted">{html.escape(item.get("ticker", "-"))}</div>
+                <div class="muted">{_yahoo_finance_link(item.get("ticker", "-"))}</div>
                 <div class="stock-price">{_fmt_decimal(item.get("close"))}</div>
                 <div class="stock-change" style="color:{change_color};">{change_text}</div>
                 {''.join(trend_rows)}
@@ -359,7 +369,7 @@ def _news_related_gain_cards(matches: list[dict], note: str) -> str:
             <div class="news-hit-card">
               <div>
                 <strong>{html.escape(item.get("name", ""))}</strong>
-                <span class="muted">{html.escape(item.get("ticker", "-"))}</span>
+                <span class="muted">{_yahoo_finance_link(item.get("ticker", "-"))}</span>
               </div>
               <div class="news-hit-price">{_fmt_decimal(item.get("close"))}</div>
               <div class="stock-change" style="color:{change_color};">{change_text}</div>
@@ -389,7 +399,7 @@ def _news_related_failures_section(matches: list[dict]) -> str:
             <div class="news-hit-card">
               <div>
                 <strong>{html.escape(item.get("name", ""))}</strong>
-                <span class="muted">{html.escape(item.get("ticker", "-"))}</span>
+                <span class="muted">{_yahoo_finance_link(item.get("ticker", "-"))}</span>
               </div>
               <div class="muted">萓｡譬ｼ蜿門ｾ怜､ｱ謨・/div>
               <div class="news-hit-title">{html.escape(item.get("error", "-"))}</div>
@@ -484,7 +494,7 @@ def _dividend_section(root: Path) -> str:
             f"""
             <div class="dividend-item">
               <div class="dividend-head">
-                <strong>{html.escape(item.get("ticker", "-"))}</strong>
+                <strong>{_yahoo_finance_link(item.get("ticker", "-"))}</strong>
                 <span class="badge" style="background:{_phase_color(phase)};">{html.escape(phase)}</span>
               </div>
               <div class="muted">{html.escape(item.get("name", ""))}</div>
@@ -543,11 +553,11 @@ def _stock_x_trends_section(root: Path) -> str:
         name = str(item.get("name") or "").strip()
         ticker = str(item.get("ticker") or "").strip()
         header = name or ticker or "-"
-        code_line = f"{ticker} / " if ticker else ""
+        code_line = f"{_yahoo_finance_link(ticker)} / " if ticker else ""
         finding_html += f"""
         <div class="news-hit-card">
           <div class="news-hit-title"><strong>{html.escape(header)}</strong></div>
-          <div class="muted">{html.escape(code_line)}{html.escape(str(item.get("sentiment") or "-"))}</div>
+          <div class="muted">{code_line}{html.escape(str(item.get("sentiment") or "-"))}</div>
           <div class="news-hit-title">{html.escape(str(item.get("reason") or "-"))}</div>
           <div class="muted">{html.escape(str(item.get("detail") or item.get("source") or "-"))}</div>
         </div>
