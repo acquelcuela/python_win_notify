@@ -623,6 +623,57 @@ def _add_to_exclude_keys(path: Path, article_key: str) -> None:
     _save_text_values(path, values)
 
 
+def _find_single_line_indices(parts: list[str]) -> list[int]:
+    return [
+        index + 1
+        for index, part in enumerate(parts)
+        if part.strip() and len(part.strip().splitlines()) <= 1
+    ]
+
+
+def _reject_single_line_thread(
+    root: Path,
+    output_path: Path,
+    exclude_keys_path: Path,
+    generated_at: str,
+    magazine: dict,
+    article: dict | None,
+    indices: list[int],
+) -> None:
+    reason = (
+        f"Generated thread contains a single-line post at index {indices}; "
+        "skipping to avoid posting a thin thread."
+    )
+    payload = _build_result_payload(
+        generated_at,
+        "error",
+        module_name="post_x_magazine",
+        reason=reason,
+        article=article,
+    )
+    payload["magazine"] = magazine
+    _dump_json(output_path, payload)
+    article_key = str(article.get("key") or "").strip() if article else ""
+    if article_key:
+        _add_to_exclude_keys(exclude_keys_path, article_key)
+        logging.info("[post_x_magazine] added article to exclude list: %s", article_key)
+    try:
+        _send_post_notification(
+            root,
+            generated_at,
+            magazine,
+            article,
+            [],
+            status="error",
+            reason=reason,
+            failed_part_index=None,
+            total_parts=0,
+        )
+    except Exception as mail_exc:
+        logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
+    logging.error("[post_x_magazine] post failed: %s", reason)
+
+
 def _select_article(
     articles: list[dict],
     magazine: dict,
@@ -779,38 +830,9 @@ def run(root: Path) -> None:
     try:
         thread_parts = _build_thread_parts(article, magazine, gemini_api_key, model)
     except SingleLineTweetGenerated as exc:
-        reason = (
-            f"Gemini generated a single-line post at index {exc.indices}; "
-            "skipping to avoid posting a thin thread."
+        _reject_single_line_thread(
+            root, output_path, exclude_keys_path, generated_at, magazine, article, exc.indices
         )
-        payload = _build_result_payload(
-            generated_at,
-            "error",
-            module_name="post_x_magazine",
-            reason=reason,
-            article=article,
-        )
-        payload["magazine"] = magazine
-        _dump_json(output_path, payload)
-        article_key = str(article.get("key") or "").strip() if article else ""
-        if article_key:
-            _add_to_exclude_keys(exclude_keys_path, article_key)
-            logging.info("[post_x_magazine] added article to exclude list: %s", article_key)
-        try:
-            _send_post_notification(
-                root,
-                generated_at,
-                magazine,
-                article,
-                [],
-                status="error",
-                reason=reason,
-                failed_part_index=None,
-                total_parts=0,
-            )
-        except Exception as mail_exc:
-            logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
-        logging.error("[post_x_magazine] post failed: %s", reason)
         return
 
     thread_parts = [
@@ -918,6 +940,18 @@ def run(root: Path) -> None:
         return
 
     fallback_parts = _build_thread_fallback_parts(article, magazine)
+
+    # If Gemini's post gets rejected by X mid-thread (e.g. duplicate content),
+    # the posting loop below silently substitutes the fallback candidate for
+    # that position. Check the fallback text up front too, so a thin
+    # single-line fallback post can't slip through unnoticed the way it did
+    # when only the Gemini output was checked.
+    single_line_indices = sorted(set(_find_single_line_indices(thread_parts)) | set(_find_single_line_indices(fallback_parts)))
+    if single_line_indices:
+        _reject_single_line_thread(
+            root, output_path, exclude_keys_path, generated_at, magazine, article, single_line_indices
+        )
+        return
 
     post_image_path = _pick_post_image(root)
     media_id: str | None = None
