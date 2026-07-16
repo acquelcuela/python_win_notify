@@ -143,6 +143,14 @@
     {
       "ticker": "3099.T",
       "aliases": ["ミツコシイセタン", "三越伊勢丹", "三越伊勢丹HD"]
+    },
+    {
+      "ticker": "5574.T",
+      "aliases": ["ABEJA"]
+    },
+    {
+      "ticker": "6525.T",
+      "aliases": ["KOKUSAI", "KOKUSAI ELECTRIC"]
     }
   ]
 }
