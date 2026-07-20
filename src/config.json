@@ -13,6 +13,8 @@
       "time": "12:15",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
     },
+    {"time": "12:45", "days": "all", "modules": ["post_x_magazine"]},
+    {"time": "17:30", "days": "all", "modules": ["post_x_magazine"]},
     {"time": "21:00", "days": "all", "modules": ["post_x_magazine"]},
     {
       "time": "22:45",
