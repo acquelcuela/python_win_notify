@@ -457,6 +457,61 @@ def _watchlist_section(root: Path) -> str:
     """
 
 
+def _range_position_label(position_pct) -> str:
+    if position_pct is None:
+        return "-"
+    if position_pct >= 80:
+        return "高値圏"
+    if position_pct <= 20:
+        return "安値圏"
+    return "中間"
+
+
+def _range_position_card(item: dict) -> str:
+    range_info = item.get("range_30d")
+    if not range_info:
+        return ""
+    change_text, change_color = _fmt_change(
+        range_info.get("change_since_start"), range_info.get("change_pct_since_start", 0)
+    )
+    position_pct = range_info.get("position_pct")
+    position_pct_clamped = max(0.0, min(100.0, float(position_pct))) if position_pct is not None else 0.0
+    position_label = _range_position_label(position_pct)
+    return f"""
+    <div class="range-card">
+      <div class="range-head">
+        <strong>{html.escape(item.get("name", ""))}</strong>
+        <span class="muted">{_yahoo_finance_link(item.get("ticker", "-"))}</span>
+      </div>
+      <div class="muted">{html.escape(str(range_info.get("start_date", "-")))}（{html.escape(str(range_info.get("trading_days", "-")))}営業日前）: {_fmt_decimal(range_info.get("start_price"))} → 現在: {_fmt_decimal(item.get("close"))}</div>
+      <div style="color:{change_color};">{change_text}(30日前比)</div>
+      <div class="muted">30日高値: {_fmt_decimal(range_info.get("high_price"))}（{html.escape(str(range_info.get("high_date", "-")))}） / 30日安値: {_fmt_decimal(range_info.get("low_price"))}（{html.escape(str(range_info.get("low_date", "-")))}）</div>
+      <div style="background:#e5e7eb;border-radius:4px;height:8px;width:100%;margin-top:6px;">
+        <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
+      </div>
+      <div class="muted">現在位置: レンジの{html.escape(str(position_pct))}%地点（{position_label}）</div>
+    </div>
+    """
+
+
+def _range_position_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "stock_watchlist.json")
+    if not payload or payload.get("status") != "ok" or not payload.get("data"):
+        return ""
+
+    cards = "".join(_range_position_card(item) for item in payload["data"] if item.get("range_30d"))
+    if not cards:
+        return ""
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">30日レンジ位置</div>
+      <div class="muted">直近30営業日の値動きレンジの中で、現在値がどの位置にあるかを表示します。</div>
+      {cards}
+    </section>
+    """
+
+
 def _phase_color(phase: str) -> str:
     return {
         "buy_window": "#2563eb",
@@ -587,6 +642,7 @@ def run(root: Path) -> None:
         + _ai_summary_section(root)
         + _news_related_gain_section(root)
         + _watchlist_section(root)
+        + _range_position_section(root)
         + _dividend_section(root)
         + _stock_x_trends_section(root)
     )
@@ -636,6 +692,8 @@ def run(root: Path) -> None:
     .stock-trend {{ margin-top:4px; color:#64748b; font-size:11px; line-height:1.25; font-weight:normal; }}
     .stock-trend span {{ display:block; }}
     .stock-trend strong {{ display:block; font-size:11px; }}
+    .range-card {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
+    .range-head {{ margin-bottom:4px; }}
     .news-hit-card {{ margin-top:10px; padding:10px; background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; }}
     .news-hit-price {{ margin-top:7px; font-size:16px; font-weight:bold; line-height:1.15; }}
     .news-hit-title {{ margin-top:7px; color:#334155; font-size:12px; line-height:1.45; font-weight:normal; }}

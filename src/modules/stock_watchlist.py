@@ -44,10 +44,43 @@ def _load_targets(root: Path) -> list[dict]:
     return targets or DEFAULT_TARGETS
 
 
+def _range_position(hist) -> dict:
+    """30-day trading range summary derived from the same fetch used for the
+    daily-change table, so this adds no extra yfinance calls."""
+    closes = hist["Close"]
+    start_price = float(closes.iloc[0])
+    current_price = float(closes.iloc[-1])
+    change = current_price - start_price
+    change_pct = (change / start_price * 100) if start_price else 0.0
+
+    high_price = float(closes.max())
+    low_price = float(closes.min())
+    high_date = closes.idxmax().date().isoformat()
+    low_date = closes.idxmin().date().isoformat()
+
+    if high_price != low_price:
+        position_pct = (current_price - low_price) / (high_price - low_price) * 100
+    else:
+        position_pct = 50.0
+
+    return {
+        "trading_days": len(closes),
+        "start_date": closes.index[0].date().isoformat(),
+        "start_price": round(start_price, 2),
+        "change_since_start": round(change, 2),
+        "change_pct_since_start": round(change_pct, 2),
+        "high_price": round(high_price, 2),
+        "high_date": high_date,
+        "low_price": round(low_price, 2),
+        "low_date": low_date,
+        "position_pct": round(position_pct, 1),
+    }
+
+
 def _fetch_target(target: dict) -> dict:
     ticker_symbol = target["ticker"]
     ticker = yf.Ticker(ticker_symbol)
-    hist = ticker.history(period="15d", interval="1d", auto_adjust=False)
+    hist = ticker.history(period="30d", interval="1d", auto_adjust=False)
     hist = hist.dropna(subset=["Close"])
     if len(hist) < 2:
         raise ValueError(f"Not enough price data returned for {ticker_symbol}.")
@@ -94,6 +127,7 @@ def _fetch_target(target: dict) -> dict:
         "change_pct": round(change_pct, 2),
         "daily_changes": daily_changes,
         "volume": int(latest["Volume"]) if "Volume" in latest else None,
+        "range_30d": _range_position(hist),
     }
 
 
