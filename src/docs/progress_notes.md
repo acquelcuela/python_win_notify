@@ -616,3 +616,7 @@ perform this action."...}`というエラーは、X Developer Community
 - 実行頻度は1日1回、`07:00`枠にのみ`modules`として明示。`MODULE_ORDER`では
   `post_x_magazine`の後・`report_html`の前に配置し、`stock_watchlist`より後に
   実行されることを保証している。
+
+その後、送信時刻を`07:00`から`21:30`(平日のみ)へ変更した。`21:30`には
+`stock_watchlist`自体は含めていないため、その日最後に`stock_watchlist`が実行された
+時点(通常は12:15枠)のスナップショットを使う形になる。
