@@ -2,7 +2,7 @@
   "batch_schedule": [
     {
       "time": "07:00",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "stock_range", "report_html", "mail_gmail"]
     },
     {"time": "07:30", "days": "all", "modules": ["post_x_magazine"]},
     {
@@ -33,6 +33,7 @@
     "stock_x_trends": true,
     "ai_summary": true,
     "post_x_magazine": true,
+    "stock_range": true,
     "report_html": true,
     "mail_gmail": true
   },

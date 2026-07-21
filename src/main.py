@@ -35,6 +35,7 @@ MODULE_ORDER = [
     "stock_x_trends",
     "ai_summary",
     "post_x_magazine",
+    "stock_range",
     "report_html",
     "mail_gmail",
 ]
