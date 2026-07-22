@@ -56,17 +56,28 @@ def _is_truthy_env(name: str) -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
-def _render_notification_block(title: str, body_lines: list[str], *, error: str | None = None, reason: str | None = None) -> str:
+def _render_notification_block(
+    title: str,
+    body_lines: list[str],
+    *,
+    error: str | None = None,
+    reason: str | None = None,
+    warning: str | None = None,
+) -> str:
     error_html = ""
     if error:
         reason_html = f"<div style='color:#b00020;margin-top:4px;'>Reason: {reason}</div>" if reason else ""
         error_html = f"<div style='color:#b00020;font-weight:700;margin-top:6px;'>ERROR</div>{reason_html}"
+    warning_html = ""
+    if warning:
+        warning_html = f"<div style='color:#b45309;margin-top:6px;'>⚠ gemini attempt failed, used fallback instead: {warning}</div>"
     lines_html = "".join(f"<div style='margin:2px 0;'>{line}</div>" for line in body_lines if line)
     return f"""
       <div style="border:1px solid #ddd;background:#fafafa;padding:10px;margin:8px 0;">
         <div style="font-weight:700;margin-bottom:6px;">{title}</div>
         {lines_html}
         {error_html}
+        {warning_html}
       </div>
     """
 
@@ -82,6 +93,7 @@ def _send_post_notification(
     reason: str | None = None,
     failed_part_index: int | None = None,
     total_parts: int | None = None,
+    candidate_warnings: dict[int, str] | None = None,
 ) -> None:
     gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
     app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
@@ -121,6 +133,7 @@ def _send_post_notification(
             reason=reason,
         )
     ]
+    candidate_warnings = candidate_warnings or {}
     for index in range(THREAD_PARTS_COUNT):
         part = tweet_parts[index] if index < len(tweet_parts) else ""
         rows.append(
@@ -129,6 +142,7 @@ def _send_post_notification(
                 [part or "(empty)"],
                 error="yes" if failed_part_index == index + 1 and reason else None,
                 reason=reason if failed_part_index == index + 1 else None,
+                warning=candidate_warnings.get(index + 1),
             )
         )
     body = f"""
@@ -965,6 +979,7 @@ def run(root: Path) -> None:
 
     posted_parts: list[str] = []
     posted_sources: list[str] = []
+    candidate_warnings: dict[int, str] = {}
     try:
         post_result = None
         reply_results: list[dict] = []
@@ -1004,6 +1019,8 @@ def run(root: Path) -> None:
                     break
                 except Exception as exc:
                     last_error = exc
+                    if label == "gemini":
+                        candidate_warnings[index + 1] = str(exc)
                     logging.warning(
                         "[post_x_magazine] post %d (%s) failed, trying next candidate: %s",
                         index + 1,
@@ -1041,6 +1058,7 @@ def run(root: Path) -> None:
                 reason=str(exc),
                 failed_part_index=failed_part_index,
                 total_parts=len(thread_parts),
+                candidate_warnings=candidate_warnings,
             )
         except Exception as mail_exc:
             logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
@@ -1094,6 +1112,7 @@ def run(root: Path) -> None:
             reason=None,
             failed_part_index=None,
             total_parts=len(posted_parts),
+            candidate_warnings=candidate_warnings,
         )
     except Exception as mail_exc:
         logging.warning("[post_x_magazine] success mail skipped: %s", mail_exc)
