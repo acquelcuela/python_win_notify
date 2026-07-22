@@ -63,6 +63,7 @@ def _range_card(item: dict) -> str:
     change_text, change_color = _fmt_change(
         range_info.get("change_since_start"), range_info.get("change_pct_since_start", 0)
     )
+    prev_change_text, prev_change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
     position_pct = range_info.get("position_pct")
     position_pct_clamped = max(0.0, min(100.0, float(position_pct))) if position_pct is not None else 0.0
     position_label = _position_label(position_pct)
@@ -74,6 +75,7 @@ def _range_card(item: dict) -> str:
       </div>
       <div style="color:#6b7280;font-size:12px;">{html.escape(str(range_info.get("start_date", "-")))}（{html.escape(str(range_info.get("trading_days", "-")))}営業日前）: {_fmt_decimal(range_info.get("start_price"))} → 現在: {_fmt_decimal(item.get("close"))}</div>
       <div style="color:{change_color};font-size:13px;font-weight:bold;">{change_text}(30日前比)</div>
+      <div style="color:{prev_change_color};font-size:13px;font-weight:bold;">{prev_change_text}(前日比)</div>
       <div style="color:#6b7280;font-size:12px;">30日高値: {_fmt_decimal(range_info.get("high_price"))}（{html.escape(str(range_info.get("high_date", "-")))}） / 30日安値: {_fmt_decimal(range_info.get("low_price"))}（{html.escape(str(range_info.get("low_date", "-")))}）</div>
       <div style="background:#e5e7eb;border-radius:4px;height:8px;width:100%;margin-top:6px;">
         <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
@@ -113,14 +115,25 @@ def run(root: Path) -> None:
         logging.info("[stock_range] skipped: no range_30d data")
         return
 
-    cards = "".join(_range_card(item) for item in items)
+    japan_items = [item for item in items if item.get("market") == "japan"]
+    us_items = [item for item in items if item.get("market") == "us"]
+    other_items = [item for item in items if item.get("market") not in {"japan", "us"}]
+
+    def _market_block(title: str, market_items: list[dict]) -> str:
+        if not market_items:
+            return ""
+        cards = "".join(_range_card(item) for item in market_items)
+        return f'<h3 style="margin-top:18px;">{html.escape(title)}</h3>{cards}'
+
+    sections = _market_block("日本株", japan_items) + _market_block("米国株", us_items) + _market_block("その他", other_items)
+
     now = datetime.now(JST)
     body = f"""
     <html>
       <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
         <h2>30日レンジ位置</h2>
         <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点 / 直近30営業日の値動きレンジの中で、現在値がどの位置にあるかを表示します。</div>
-        {cards}
+        {sections}
       </body>
     </html>
     """
