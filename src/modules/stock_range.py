@@ -130,6 +130,7 @@ def run(root: Path) -> None:
         return
 
     items = [item for item in payload["data"] if item.get("range_30d")]
+    items.sort(key=lambda item: item["range_30d"].get("trend_change_pct") or 0, reverse=True)
     if not items:
         result = {
             "module": "stock_range",
