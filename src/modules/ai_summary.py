@@ -6,6 +6,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules.gemini_pricing import GeminiUsageTracker
 
 JST = timezone(timedelta(hours=9), "JST")
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
@@ -137,7 +138,8 @@ JSON:
 """.strip()
 
 
-def _call_gemini(api_key: str, model: str, prompt: str) -> str:
+def _call_gemini(api_key: str, model: str, prompt: str) -> tuple[str, dict]:
+    """Returns (text, usage_metadata); see modules/gemini_pricing.py."""
     url = API_URL_TEMPLATE.format(model=model)
     body = {
         "contents": [
@@ -171,7 +173,7 @@ def _call_gemini(api_key: str, model: str, prompt: str) -> str:
     text = "".join(str(part.get("text", "")) for part in parts).strip()
     if not text:
         raise RuntimeError("Gemini API returned empty text.")
-    return text
+    return text, (result.get("usageMetadata") or {})
 
 
 def _build_skipped_payload(generated_at: str) -> dict:
@@ -203,6 +205,7 @@ def run(root: Path) -> None:
     model = str(config.get("model") or DEFAULT_MODEL)
     summaries = {}
     errors = {}
+    usage_tracker = GeminiUsageTracker(model)
 
     tasks = {
         "market_data": _build_market_prompt(_market_data_payload(root)),
@@ -211,7 +214,9 @@ def run(root: Path) -> None:
 
     for key, prompt in tasks.items():
         try:
-            summaries[key] = _call_gemini(api_key=api_key, model=model, prompt=prompt)
+            text, usage = _call_gemini(api_key=api_key, model=model, prompt=prompt)
+            summaries[key] = text
+            usage_tracker.add(usage)
             logging.info("[ai_summary] generated %s with %s", key, model)
         except Exception as exc:
             errors[key] = str(exc)
@@ -224,6 +229,8 @@ def run(root: Path) -> None:
             "status": "ok",
             "model": model,
             "data": summaries,
+            "gemini_cost_jpy": round(usage_tracker.cost_jpy, 3),
+            "gemini_call_count": usage_tracker.call_count,
         }
         if errors:
             payload["warnings"] = errors

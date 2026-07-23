@@ -305,7 +305,10 @@ def _gemini_prompt(article: dict, attempt: int = 1) -> str:
     )
 
 
-def _call_gemini(api_key: str, model: str, prompt: str) -> str:
+def _call_gemini(api_key: str, model: str, prompt: str) -> tuple[str, dict]:
+    """Returns (text, usage_metadata). usage_metadata has promptTokenCount /
+    candidatesTokenCount as reported by the Gemini API, used for cost
+    tracking by callers (see modules/gemini_pricing.py)."""
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     body = {
         "contents": [
@@ -337,7 +340,7 @@ def _call_gemini(api_key: str, model: str, prompt: str) -> str:
     text = "".join(str(part.get("text", "")) for part in parts).strip()
     if not text:
         raise RuntimeError("Gemini API returned empty text.")
-    return text
+    return text, (payload.get("usageMetadata") or {})
 
 
 def _build_tweet_text(article: dict, gemini_api_key: str | None, model: str, attempt: int = 1) -> str:
@@ -347,7 +350,7 @@ def _build_tweet_text(article: dict, gemini_api_key: str | None, model: str, att
 
     if gemini_api_key:
         try:
-            text = _call_gemini(gemini_api_key, model, _gemini_prompt(article, attempt=attempt))
+            text, _usage = _call_gemini(gemini_api_key, model, _gemini_prompt(article, attempt=attempt))
             if url not in text:
                 text = f"{text.rstrip()}\n{url}"
             return text.strip()
@@ -397,7 +400,7 @@ def _build_thread_text(article: dict, gemini_api_key: str | None, model: str, at
             f"URL: {url}\n"
         )
         try:
-            text = _call_gemini(gemini_api_key, model, prompt)
+            text, _usage = _call_gemini(gemini_api_key, model, prompt)
             return text.strip()
         except Exception as exc:
             logging.warning("[post_x_note] Gemini thread text fallback used: %s", exc)

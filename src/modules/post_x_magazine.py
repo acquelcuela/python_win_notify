@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from modules.gemini_pricing import GeminiUsageTracker
 from modules.mail_gmail import send_html_mail
 from modules.post_x_note import (
     _build_result_payload,
@@ -94,6 +95,7 @@ def _send_post_notification(
     failed_part_index: int | None = None,
     total_parts: int | None = None,
     candidate_warnings: dict[int, str] | None = None,
+    gemini_usage: GeminiUsageTracker | None = None,
 ) -> None:
     gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
     app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
@@ -145,11 +147,19 @@ def _send_post_notification(
                 warning=candidate_warnings.get(index + 1),
             )
         )
+    cost_footer = ""
+    if gemini_usage is not None and gemini_usage.call_count > 0:
+        cost_footer = (
+            f"<div style='color:#6b7280;font-size:12px;margin-top:8px;'>"
+            f"Gemini API使用料(概算): 約{gemini_usage.cost_jpy:.3f}円"
+            f"（{gemini_usage.call_count}回呼び出し、1ドル160円換算）</div>"
+        )
     body = f"""
     <html>
       <body>
         <h2>X post {status}</h2>
         {''.join(rows)}
+        {cost_footer}
       </body>
     </html>
     """
@@ -514,14 +524,22 @@ def _build_content_thread_parts(article: dict | None, magazine: dict) -> list[st
     return parts[:THREAD_PARTS_COUNT]
 
 
-def _build_thread_parts(article: dict | None, magazine: dict, gemini_api_key: str | None, model: str) -> list[str]:
+def _build_thread_parts(
+    article: dict | None,
+    magazine: dict,
+    gemini_api_key: str | None,
+    model: str,
+    usage_tracker=None,
+) -> list[str]:
     magazine_name = str(magazine.get("name") or "").strip()
     title = str(article.get("title") or "").strip() if article else ""
     excerpt = _article_content_text(article)
     title_line = title[:80] if title else (magazine_name or "要点")
     if gemini_api_key:
         try:
-            text = _call_gemini(gemini_api_key, model, _build_prompt(article, magazine))
+            text, usage = _call_gemini(gemini_api_key, model, _build_prompt(article, magazine))
+            if usage_tracker is not None:
+                usage_tracker.add(usage)
             raw_parts = [part.strip() for part in text.split("---THREAD---") if part.strip()]
             parts = [
                 _format_multiline_tweet(part, max_lines=5)[:220].rstrip()
@@ -653,6 +671,7 @@ def _reject_single_line_thread(
     magazine: dict,
     article: dict | None,
     indices: list[int],
+    gemini_usage: GeminiUsageTracker | None = None,
 ) -> None:
     reason = (
         f"Generated thread contains a single-line post at index {indices}; "
@@ -682,6 +701,7 @@ def _reject_single_line_thread(
             reason=reason,
             failed_part_index=None,
             total_parts=0,
+            gemini_usage=gemini_usage,
         )
     except Exception as mail_exc:
         logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
@@ -841,11 +861,13 @@ def run(root: Path) -> None:
         logging.info("[post_x_magazine] skipped: no eligible pair")
         return
 
+    gemini_usage = GeminiUsageTracker(model)
     try:
-        thread_parts = _build_thread_parts(article, magazine, gemini_api_key, model)
+        thread_parts = _build_thread_parts(article, magazine, gemini_api_key, model, gemini_usage)
     except SingleLineTweetGenerated as exc:
         _reject_single_line_thread(
-            root, output_path, exclude_keys_path, generated_at, magazine, article, exc.indices
+            root, output_path, exclude_keys_path, generated_at, magazine, article, exc.indices,
+            gemini_usage=gemini_usage,
         )
         return
 
@@ -883,6 +905,7 @@ def run(root: Path) -> None:
                 reason=reason,
                 failed_part_index=failed_part_index,
                 total_parts=len(thread_parts),
+                gemini_usage=gemini_usage,
             )
         except Exception as mail_exc:
             logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
@@ -907,6 +930,7 @@ def run(root: Path) -> None:
                 reason="No tweet parts could be generated.",
                 failed_part_index=None,
                 total_parts=0,
+                gemini_usage=gemini_usage,
             )
         except Exception as mail_exc:
             logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
@@ -942,6 +966,7 @@ def run(root: Path) -> None:
                 reason=None,
                 failed_part_index=None,
                 total_parts=len(thread_parts),
+                gemini_usage=gemini_usage,
             )
         except Exception as mail_exc:
             logging.warning("[post_x_magazine] notification mail skipped: %s", mail_exc)
@@ -963,7 +988,8 @@ def run(root: Path) -> None:
     single_line_indices = sorted(set(_find_single_line_indices(thread_parts)) | set(_find_single_line_indices(fallback_parts)))
     if single_line_indices:
         _reject_single_line_thread(
-            root, output_path, exclude_keys_path, generated_at, magazine, article, single_line_indices
+            root, output_path, exclude_keys_path, generated_at, magazine, article, single_line_indices,
+            gemini_usage=gemini_usage,
         )
         return
 
@@ -1059,6 +1085,7 @@ def run(root: Path) -> None:
                 failed_part_index=failed_part_index,
                 total_parts=len(thread_parts),
                 candidate_warnings=candidate_warnings,
+                gemini_usage=gemini_usage,
             )
         except Exception as mail_exc:
             logging.warning("[post_x_magazine] failure mail skipped: %s", mail_exc)
@@ -1113,6 +1140,7 @@ def run(root: Path) -> None:
             failed_part_index=None,
             total_parts=len(posted_parts),
             candidate_warnings=candidate_warnings,
+            gemini_usage=gemini_usage,
         )
     except Exception as mail_exc:
         logging.warning("[post_x_magazine] success mail skipped: %s", mail_exc)

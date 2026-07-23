@@ -576,6 +576,21 @@ def _stock_x_trends_section(root: Path) -> str:
     """
 
 
+def _gemini_cost_footer(root: Path) -> str:
+    payload = _load_json(root / "output" / "ai_summary.json")
+    if not payload or payload.get("status") != "ok":
+        return ""
+    cost_jpy = payload.get("gemini_cost_jpy")
+    call_count = payload.get("gemini_call_count")
+    if cost_jpy is None:
+        return ""
+    return f"""
+    <div class="muted" style="margin-top:12px;padding:0 16px 16px;">
+      Gemini API使用料(概算・本レポート分): 約{cost_jpy:.3f}円（{html.escape(str(call_count or 0))}回呼び出し、1ドル160円換算）
+    </div>
+    """
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -589,6 +604,7 @@ def run(root: Path) -> None:
         + _watchlist_section(root)
         + _dividend_section(root)
         + _stock_x_trends_section(root)
+        + _gemini_cost_footer(root)
     )
     document = f"""<!doctype html>
 <html lang="ja">
