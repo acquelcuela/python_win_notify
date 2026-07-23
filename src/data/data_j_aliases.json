@@ -151,6 +151,14 @@
     {
       "ticker": "6525.T",
       "aliases": ["KOKUSAI", "KOKUSAI ELECTRIC"]
+    },
+    {
+      "ticker": "1518.T",
+      "aliases": ["三井松島HD"]
+    },
+    {
+      "ticker": "9090.T",
+      "aliases": ["AZ丸和HD", "AZ丸和"]
     }
   ]
 }
