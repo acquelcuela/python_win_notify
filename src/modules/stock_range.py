@@ -56,6 +56,25 @@ def _position_label(position_pct) -> str:
     return "中間"
 
 
+_TREND_LABELS = {
+    "up": ("上昇中", "#047857"),
+    "down": ("下降中", "#b91c1c"),
+    "flat": ("横ばい", "#334155"),
+    "unknown": ("-", "#6b7280"),
+}
+
+
+def _trend_text(range_info: dict) -> tuple[str, str]:
+    trend = range_info.get("trend", "unknown")
+    label, color = _TREND_LABELS.get(trend, _TREND_LABELS["unknown"])
+    days = range_info.get("trend_days")
+    trend_change_pct = range_info.get("trend_change_pct")
+    if not days or trend_change_pct is None:
+        return "-", color
+    sign = "+" if trend_change_pct >= 0 else ""
+    return f"直近{days}営業日: {label}（{sign}{trend_change_pct:.2f}%）", color
+
+
 def _range_card(item: dict) -> str:
     range_info = item.get("range_30d")
     if not range_info:
@@ -67,6 +86,12 @@ def _range_card(item: dict) -> str:
     position_pct = range_info.get("position_pct")
     position_pct_clamped = max(0.0, min(100.0, float(position_pct))) if position_pct is not None else 0.0
     position_label = _position_label(position_pct)
+    distance_from_low_pct = range_info.get("distance_from_low_pct")
+    distance_from_high_pct = range_info.get("distance_from_high_pct")
+    distance_text = "-"
+    if distance_from_low_pct is not None and distance_from_high_pct is not None:
+        distance_text = f"安値比: +{distance_from_low_pct:.2f}% / 高値比: {distance_from_high_pct:.2f}%"
+    trend_text, trend_color = _trend_text(range_info)
     return f"""
     <div style="margin-top:10px;padding:10px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
       <div style="margin-bottom:4px;">
@@ -80,7 +105,8 @@ def _range_card(item: dict) -> str:
       <div style="background:#e5e7eb;border-radius:4px;height:8px;width:100%;margin-top:6px;">
         <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
       </div>
-      <div style="color:#6b7280;font-size:12px;">現在位置: レンジの{html.escape(str(position_pct))}%地点（{position_label}）</div>
+      <div style="color:#6b7280;font-size:12px;">現在位置: レンジの{html.escape(str(position_pct))}%地点（{position_label}） / {html.escape(distance_text)}</div>
+      <div style="color:{trend_color};font-size:12px;font-weight:bold;">{html.escape(trend_text)}</div>
     </div>
     """
 

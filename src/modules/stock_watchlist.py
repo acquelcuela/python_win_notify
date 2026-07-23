@@ -44,6 +44,35 @@ def _load_targets(root: Path) -> list[dict]:
     return targets or DEFAULT_TARGETS
 
 
+RECENT_TREND_WINDOW_DAYS = 5
+RECENT_TREND_FLAT_THRESHOLD_PCT = 1.0
+
+
+def _recent_trend(closes) -> dict:
+    """Direction of the last few trading days, so a mid-range position can
+    still say whether price is currently climbing or falling."""
+    window = min(RECENT_TREND_WINDOW_DAYS, len(closes) - 1)
+    if window < 1:
+        return {"trend": "unknown", "trend_days": 0, "trend_change_pct": 0.0}
+
+    recent_start = float(closes.iloc[-(window + 1)])
+    current = float(closes.iloc[-1])
+    trend_change_pct = ((current - recent_start) / recent_start * 100) if recent_start else 0.0
+
+    if trend_change_pct > RECENT_TREND_FLAT_THRESHOLD_PCT:
+        trend = "up"
+    elif trend_change_pct < -RECENT_TREND_FLAT_THRESHOLD_PCT:
+        trend = "down"
+    else:
+        trend = "flat"
+
+    return {
+        "trend": trend,
+        "trend_days": window,
+        "trend_change_pct": round(trend_change_pct, 2),
+    }
+
+
 def _range_position(hist) -> dict:
     """30-day trading range summary derived from the same fetch used for the
     daily-change table, so this adds no extra yfinance calls."""
@@ -63,6 +92,9 @@ def _range_position(hist) -> dict:
     else:
         position_pct = 50.0
 
+    distance_from_low_pct = ((current_price - low_price) / low_price * 100) if low_price else 0.0
+    distance_from_high_pct = ((current_price - high_price) / high_price * 100) if high_price else 0.0
+
     return {
         "trading_days": len(closes),
         "start_date": closes.index[0].date().isoformat(),
@@ -74,6 +106,9 @@ def _range_position(hist) -> dict:
         "low_price": round(low_price, 2),
         "low_date": low_date,
         "position_pct": round(position_pct, 1),
+        "distance_from_low_pct": round(distance_from_low_pct, 2),
+        "distance_from_high_pct": round(distance_from_high_pct, 2),
+        **_recent_trend(closes),
     }
 
 
