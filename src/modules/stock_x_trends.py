@@ -9,12 +9,21 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules.news_movers import (
+    _alias_file_path,
+    _data_file_path,
+    _load_aliases,
+    _load_listed_companies,
+)
+
 
 JST = timezone(timedelta(hours=9), "JST")
 DEFAULT_MODEL = "grok-4.3"
 GROK_API_URL = "https://api.x.ai/v1/responses"
 MAX_COMMON_KEYWORDS = 10
 MAX_FINDINGS = 8
+HISTORY_DIR_NAME = "history"
+HISTORY_RETENTION_DAYS = 30
 
 
 def _load_json(path: Path) -> dict | list | None:
@@ -247,8 +256,17 @@ def _merge_payload(base: dict, extra: dict) -> dict:
 
 
 def _needs_more_passes(payload: dict) -> bool:
-    findings = (payload.get("stock_findings") or []) + (payload.get("theme_findings") or [])
+    stock_findings = payload.get("stock_findings") or []
+    theme_findings = payload.get("theme_findings") or []
+    findings = stock_findings + theme_findings
     if len(findings) < 4:
+        return True
+    # The broad pass alone tends to return plenty of individual-ticker hits
+    # but almost never any theme/discovery findings, since it isn't aimed at
+    # that signal. Require some theme coverage too so the momentum/catalyst
+    # passes (which target different signal types) actually get a chance to
+    # run instead of being skipped every time the broad pass looks "enough".
+    if len(theme_findings) < 2:
         return True
     specific_count = 0
     for item in findings:
@@ -315,6 +333,76 @@ def _run_grok_searches(api_key: str, model: str, max_tokens: int, context: str) 
     return merged, passes_used
 
 
+def _build_name_lookup(root: Path, config: dict) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Returns (code -> official name, code -> alias list) so Grok findings
+    can be cross-checked against the same reference data news_movers uses.
+    A finding whose ticker/name doesn't resolve here either means data_j.csv
+    is stale (the ticker was delisted/renamed) or Grok hallucinated it - both
+    are worth surfacing instead of silently trusting the finding."""
+    news_movers_config = config.get("news_movers", {})
+    data_path = _data_file_path(root, config)
+    alias_path = _alias_file_path(root, config)
+    try:
+        companies = _load_listed_companies(root, data_path)
+    except FileNotFoundError:
+        return {}, {}
+    names_by_code = {company["code"]: company["name"] for company in companies}
+    aliases_by_ticker = _load_aliases(alias_path)
+    return names_by_code, aliases_by_ticker
+
+
+def _verify_findings(root: Path, data: dict) -> dict:
+    names_by_code, aliases_by_ticker = _build_name_lookup(root, _load_config(root))
+    if not names_by_code:
+        return data
+
+    unresolved: list[str] = []
+    for finding in data.get("stock_findings") or []:
+        code = str(finding.get("ticker") or "").strip()
+        name = str(finding.get("name") or "").strip()
+        if not code:
+            continue
+        official_name = names_by_code.get(code)
+        aliases = aliases_by_ticker.get(f"{code}.T", [])
+        known_names = {official_name} | set(aliases) if official_name else set(aliases)
+        resolved = bool(official_name) and (not name or name in known_names or official_name in name or name in official_name)
+        finding["verified"] = resolved
+        if not resolved:
+            unresolved.append(f"{code}({name or '-'})")
+
+    if unresolved:
+        logging.warning(
+            "[stock_x_trends] %d finding(s) did not match data_j.csv/aliases - check for stale listing data or a missing alias: %s",
+            len(unresolved),
+            ", ".join(unresolved),
+        )
+    return data
+
+
+def _archive_history(root: Path, payload: dict) -> None:
+    """Keep a dated copy of each run's output so past search content isn't
+    lost the moment the next run overwrites output/stock_x_trends.json -
+    otherwise the only record of a given day's findings was the report email."""
+    history_dir = root / "output" / HISTORY_DIR_NAME
+    history_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = payload.get("generated_at") or datetime.now(JST).isoformat()
+    try:
+        date_label = datetime.fromisoformat(str(generated_at)).astimezone(JST).strftime("%Y%m%d")
+    except (TypeError, ValueError):
+        date_label = datetime.now(JST).strftime("%Y%m%d")
+    history_path = history_dir / f"stock_x_trends_{date_label}.json"
+    history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    cutoff = datetime.now(JST) - timedelta(days=HISTORY_RETENTION_DAYS)
+    for existing in history_dir.glob("stock_x_trends_*.json"):
+        try:
+            file_date = datetime.strptime(existing.stem.split("_")[-1], "%Y%m%d").replace(tzinfo=JST)
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            existing.unlink(missing_ok=True)
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -355,6 +443,7 @@ def run(root: Path) -> None:
 
     try:
         data, passes_used = _run_grok_searches(api_key, model, max_tokens, context)
+        data = _verify_findings(root, data)
         payload = {
             "module": "stock_x_trends",
             "generated_at": generated_at,
@@ -382,6 +471,8 @@ def run(root: Path) -> None:
         logging.error("[stock_x_trends] failed: %s", exc)
 
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if payload.get("status") == "ok":
+        _archive_history(root, payload)
 
 
 if __name__ == "__main__":

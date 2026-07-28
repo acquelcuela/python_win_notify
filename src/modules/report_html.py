@@ -554,12 +554,18 @@ def _stock_x_trends_section(root: Path) -> str:
         ticker = str(item.get("ticker") or "").strip()
         header = name or ticker or "-"
         code_line = f"{_yahoo_finance_link(ticker)} / " if ticker else ""
+        unverified_note = (
+            '<div class="muted">⚠ 銘柄データと未一致(表記ゆれの可能性)</div>'
+            if ticker and item.get("verified") is False
+            else ""
+        )
         finding_html += f"""
         <div class="news-hit-card">
           <div class="news-hit-title"><strong>{html.escape(header)}</strong></div>
           <div class="muted">{code_line}{html.escape(str(item.get("sentiment") or "-"))}</div>
           <div class="news-hit-title">{html.escape(str(item.get("reason") or "-"))}</div>
           <div class="muted">{html.escape(str(item.get("detail") or item.get("source") or "-"))}</div>
+          {unverified_note}
         </div>
         """
 

@@ -1,5 +1,6 @@
 {
   "batch_schedule": [
+    {"time": "06:45", "modules": ["stock_range"]},
     {
       "time": "07:00",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
@@ -226,6 +227,14 @@
         "name": "ギフトホールディングス"
       },
       {
+        "ticker": "5406.T",
+        "name": "神戸製鋼所"
+      },
+      {
+        "ticker": "7175.T",
+        "name": "今村証券"
+      },
+      {
         "ticker": "AAPL",
         "name": "アップル"
       },
@@ -239,17 +248,17 @@
     "targets": {
       "RYLD": {
         "name": "Global X Russell 2000 Covered Call ETF",
-        "ex_dividend_date": "2026-06-22",
-        "last_dividend": 0.157,
-        "date_confidence": "estimated_from_recent_history",
-        "source": "Dividend.com 驍ｵ・ｺ繝ｻ・ｮ髯橸ｽｻ繝ｻ・･髮弱・・ｽ・ｴ驍ｵ・ｺ繝ｻ・ｧ RYLD 驍ｵ・ｺ繝ｻ・ｯ 2026-05-18 驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ繝ｻ・ｧ髫ｴ蟶帶ｲｺ繝ｻ・ｬ繝ｻ・｡髯具ｽｻ郢晢ｽｻ郢晢ｽｻ驛｢・ｧ陜｣・､繝ｻ・｢繝ｻ・ｺ鬮ｫ・ｱ鬮ｦ・ｪ・つ郢晢ｽｻ髫ｴ蟶托ｽｺ・･郢晢ｽｻ驍ｵ・ｺ繝ｻ・ｯ鬨ｾ・ｶ繝ｻ・ｴ鬮ｴ蜿ｰ・ｻ・｣郢晢ｽｻ髫ｴ蟶帶ｲｺ繝ｻ・ｬ繝ｻ・｡驛｢譏懶ｽｻ・｣邵ｺ・｡驛｢譎｢・ｽ・ｼ驛｢譎｢・ｽ・ｳ驍ｵ・ｺ闕ｵ譎｢・ｽ闃ｽ・ｬ證ｦ・ｽ・ｨ髯橸ｽｳ陞｢・ｹ・つ郢晢ｽｻ"
+        "ex_dividend_date": "2026-07-20",
+        "last_dividend": 0.1605,
+        "date_confidence": "confirmed_actual",
+        "source": "stockanalysis.com RYLD dividend history, checked 2026-07-28 (yfinance's exDividendDate is unavailable for this ETF, so this needs periodic manual refresh)"
       },
       "SDIV": {
         "name": "Global X SuperDividend ETF",
-        "ex_dividend_date": "2026-07-02",
+        "ex_dividend_date": "2026-07-06",
         "last_dividend": 0.18,
-        "date_confidence": "estimated_from_recent_history",
-        "source": "Dividend.com 驍ｵ・ｺ繝ｻ・ｮ髯橸ｽｻ繝ｻ・･髮弱・・ｽ・ｴ驍ｵ・ｺ繝ｻ・ｧ SDIV 驍ｵ・ｺ繝ｻ・ｯ 2026-06-03 驍ｵ・ｺ繝ｻ・ｾ驍ｵ・ｺ繝ｻ・ｧ髫ｴ蟶帶ｲｺ繝ｻ・ｬ繝ｻ・｡髯具ｽｻ郢晢ｽｻ郢晢ｽｻ驛｢・ｧ陜｣・､繝ｻ・｢繝ｻ・ｺ鬮ｫ・ｱ鬮ｦ・ｪ・つ郢晢ｽｻ髫ｴ蟶托ｽｺ・･郢晢ｽｻ驍ｵ・ｺ繝ｻ・ｯ髫ｴ蟶托ｽｺ・･郢晢ｽｻ驛｢・ｧ繝ｻ・ｹ驛｢・ｧ繝ｻ・ｱ驛｢・ｧ繝ｻ・ｸ驛｢譎｢・ｽ・･驛｢譎｢・ｽ・ｼ驛｢譎｢・ｽ・ｫ驍ｵ・ｺ繝ｻ・ｨ 2026-07-03 鬩債繝ｻ・ｳ髯懈圜・ｽ・ｽ髯晢ｽｶ郢ｧ繝ｻ・｣・ｰ繝ｻ・ｴ髣費ｽｨ陞滂ｽｧ繝ｻ・ｰ繝ｻ・ｴ驛｢・ｧ陞ｳ螟ｲ・ｽ・ｸ闕ｳ蟯ｩ遨宣し・ｺ陋ｹ・ｻ遯ｶ・ｻ髫ｰ證ｦ・ｽ・ｨ髯橸ｽｳ陞｢・ｹ・つ郢晢ｽｻ"
+        "date_confidence": "confirmed_actual",
+        "source": "stockanalysis.com SDIV dividend history, checked 2026-07-28 (yfinance's exDividendDate is unavailable for this ETF, so this needs periodic manual refresh)"
       }
     }
   }

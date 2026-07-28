@@ -186,6 +186,24 @@ def _fetch_market_data(ticker_symbol: str) -> tuple[dict, str | None]:
         }, str(exc)
 
 
+def _latest_dividend_from_history(ticker_symbol: str) -> tuple[date | None, float | None]:
+    """ETFs like RYLD/SDIV leave get_info()'s exDividendDate empty, but the
+    actual paid-dividend history (Ticker.dividends) reliably has the most
+    recent ex-dividend date and amount - fetched fresh every run, so no
+    manual config or separate sync job is needed to keep this current."""
+    try:
+        dividends = yf.Ticker(ticker_symbol).dividends
+    except Exception as exc:
+        logging.warning("[stock_dividend] %s dividend history fetch failed: %s", ticker_symbol, exc)
+        return None, None
+    if dividends is None or dividends.empty:
+        return None, None
+    last_date = dividends.index[-1]
+    if hasattr(last_date, "date"):
+        last_date = last_date.date()
+    return last_date, round(float(dividends.iloc[-1]), 4)
+
+
 def _fetch_target(target: dict, manual_config: dict) -> tuple[dict, str | None]:
     ticker_symbol = target["ticker"]
     manual = manual_config.get(ticker_symbol, {})
@@ -195,11 +213,17 @@ def _fetch_target(target: dict, manual_config: dict) -> tuple[dict, str | None]:
     info = market["info"]
     today = datetime.now(JST).date()
 
+    history_ex_dividend_date, history_last_dividend = _latest_dividend_from_history(ticker_symbol)
     manual_ex_dividend_date = _to_date(manual.get("ex_dividend_date"))
     market_ex_dividend_date = _to_date(_get_info_value(info, "exDividendDate", "ex_dividend_date"))
-    ex_dividend_date = manual_ex_dividend_date or market_ex_dividend_date
-    date_source = "manual_config" if manual_ex_dividend_date else "yfinance"
-    if not ex_dividend_date:
+    ex_dividend_date = history_ex_dividend_date or manual_ex_dividend_date or market_ex_dividend_date
+    if history_ex_dividend_date:
+        date_source = "dividend_history"
+    elif manual_ex_dividend_date:
+        date_source = "manual_config"
+    elif market_ex_dividend_date:
+        date_source = "yfinance"
+    else:
         date_source = "unavailable"
 
     days_to_ex_dividend = None
@@ -211,7 +235,9 @@ def _fetch_target(target: dict, manual_config: dict) -> tuple[dict, str | None]:
     if dividend_yield is not None:
         dividend_yield = round(float(dividend_yield) * 100, 2)
 
-    last_dividend = _get_info_value(info, "lastDividendValue", "trailingAnnualDividendRate")
+    last_dividend = history_last_dividend
+    if last_dividend is None:
+        last_dividend = _get_info_value(info, "lastDividendValue", "trailingAnnualDividendRate")
     if last_dividend is None:
         last_dividend = manual.get("last_dividend")
     if last_dividend is not None:
@@ -230,8 +256,8 @@ def _fetch_target(target: dict, manual_config: dict) -> tuple[dict, str | None]:
         "message": message,
         "timing_plan": _build_timing_plan(ex_dividend_date),
         "date_source": date_source,
-        "date_confidence": manual.get("date_confidence") if manual_ex_dividend_date else None,
-        "source": manual.get("source") if manual_ex_dividend_date else "yfinance",
+        "date_confidence": "confirmed_actual" if history_ex_dividend_date else manual.get("date_confidence"),
+        "source": "yfinance dividend history" if history_ex_dividend_date else (manual.get("source") if manual_ex_dividend_date else "yfinance"),
     }
     if market_error:
         result["market_data_error"] = market_error
