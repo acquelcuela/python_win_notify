@@ -121,7 +121,35 @@ def _x_trend_note(item: dict, x_trend_hits: dict[str, dict]) -> str:
 _SENTIMENT_BONUS = {"strong_positive": 30, "positive": 20}
 
 
-def _momentum_score(item: dict, x_trend_hits: dict[str, dict]) -> tuple[int, list[str]]:
+def _market_change_pct(root: Path) -> float | None:
+    """Overnight Nikkei futures move, used to down-weight candidates ahead
+    of a broad-selloff day. Deliberately uses nikkei_futures, not
+    nikkei_average: stock_range runs at 06:45, before the Tokyo cash
+    session opens, so the day session's change_pct doesn't exist yet at
+    scoring time - using it would be scoring with information from the
+    future. The overnight futures move is what's actually known then, and
+    on 2026-07-28 it tracked the day's real move closely (-4.38% vs the
+    day session's eventual -4.44%). A 2026-07-28 check showed the reversal
+    signal (buy the 30-day low) going 0/9 that day - deep-low stocks got
+    sold even harder, not bought back, because the weakness was
+    market-wide rather than stock-specific."""
+    payload = _load_json(root / "output" / "stock_nikkei.json")
+    if not payload or payload.get("status") != "ok":
+        return None
+    data = payload.get("data") or {}
+    futures = (data.get("indices") or {}).get("nikkei_futures") or {}
+    change_pct = futures.get("change_pct")
+    return float(change_pct) if change_pct is not None else None
+
+
+def _market_penalty(market_change_pct: float | None, factor: float, cap: float) -> tuple[float, str]:
+    if market_change_pct is None or market_change_pct >= 0:
+        return 0.0, ""
+    penalty = max(market_change_pct * factor, -cap)
+    return penalty, f"市場全体{market_change_pct:+.1f}%のため減点"
+
+
+def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[int, list[str]]:
     """Rule-based signal, not a prediction: recent uptrend + strength within
     the 30-day range + same-day positive X buzz. Purely mechanical scoring
     from data already computed elsewhere - no extra fetches."""
@@ -150,10 +178,15 @@ def _momentum_score(item: dict, x_trend_hits: dict[str, dict]) -> tuple[int, lis
         score += bonus
         reasons.append(f"当日Xで{sentiment}に話題")
 
-    return min(round(score), 100), reasons
+    penalty, penalty_reason = _market_penalty(market_change_pct, factor=4, cap=30)
+    if penalty:
+        score += penalty
+        reasons.append(penalty_reason)
+
+    return max(min(round(score), 100), 0), reasons
 
 
-def _reversal_score(item: dict, x_trend_hits: dict[str, dict]) -> tuple[int, list[str]]:
+def _reversal_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[int, list[str]]:
     """Rule-based signal, not a prediction: deep in the 30-day low range,
     no longer actively falling, plus same-day positive X buzz."""
     range_info = item.get("range_30d") or {}
@@ -177,7 +210,15 @@ def _reversal_score(item: dict, x_trend_hits: dict[str, dict]) -> tuple[int, lis
         score += bonus
         reasons.append(f"当日Xで{sentiment}に話題")
 
-    return min(round(score), 100), reasons
+    # Reversal candidates take a heavier penalty than momentum ones: "buy
+    # the 30-day low" assumes stock-specific weakness, which is exactly the
+    # assumption a market-wide selloff breaks.
+    penalty, penalty_reason = _market_penalty(market_change_pct, factor=8, cap=50)
+    if penalty:
+        score += penalty
+        reasons.append(penalty_reason)
+
+    return max(min(round(score), 100), 0), reasons
 
 
 def _candidate_rows(candidates: list[tuple[int, dict, list[str]]], empty_text: str) -> str:
@@ -196,14 +237,14 @@ def _candidate_rows(candidates: list[tuple[int, dict, list[str]]], empty_text: s
     return rows
 
 
-def _score_candidates(items: list[dict], x_trend_hits: dict[str, dict]) -> tuple[list, list]:
+def _score_candidates(items: list[dict], x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[list, list]:
     momentum = sorted(
-        ((s, item, r) for item in items for s, r in [_momentum_score(item, x_trend_hits)] if s >= 40),
+        ((s, item, r) for item in items for s, r in [_momentum_score(item, x_trend_hits, market_change_pct)] if s >= 40),
         key=lambda entry: entry[0],
         reverse=True,
     )
     reversal = sorted(
-        ((s, item, r) for item in items for s, r in [_reversal_score(item, x_trend_hits)] if s >= 40),
+        ((s, item, r) for item in items for s, r in [_reversal_score(item, x_trend_hits, market_change_pct)] if s >= 40),
         key=lambda entry: entry[0],
         reverse=True,
     )
@@ -302,12 +343,16 @@ def _hit_rate_summary(records: list[dict]) -> str:
     return f'<div style="color:#6b7280;font-size:12px;margin-top:8px;">これまでの的中率(翌営業日の実際の値動きがプラスだったか): モメンタム型 {html.escape(m_text)} / リバーサル型 {html.escape(r_text)}</div>'
 
 
-def _prediction_section(items: list[dict], x_trend_hits: dict[str, dict], momentum: list, reversal: list, hit_rate_html: str) -> str:
+def _prediction_section(items: list[dict], x_trend_hits: dict[str, dict], momentum: list, reversal: list, hit_rate_html: str, market_change_pct: float | None) -> str:
+    market_note = ""
+    if market_change_pct is not None:
+        market_note = f'<div style="color:#6b7280;font-size:12px;">日経225先物(夜間取引): {market_change_pct:+.2f}%{" - 下落分だけ両スコアを減点しています" if market_change_pct < 0 else ""}</div>'
     return f"""
     <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;">
       <h3 style="margin-top:0;">翌営業日 上昇候補(機械的スコアリング・投資助言ではありません)</h3>
-      <div style="color:#6b7280;font-size:12px;margin-bottom:8px;">30日レンジ位置・直近5営業日のトレンド・当日Xの話題を組み合わせた参考指標です。的中を保証するものではありません。</div>
-      <h4 style="margin:0 0 4px;">モメンタム型(上昇継続を期待)</h4>
+      <div style="color:#6b7280;font-size:12px;margin-bottom:8px;">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
+      {market_note}
+      <h4 style="margin:8px 0 4px;">モメンタム型(上昇継続を期待)</h4>
       {_candidate_rows(momentum, "該当銘柄なし")}
       <h4 style="margin:12px 0 4px;">リバーサル型(反発を期待)</h4>
       {_candidate_rows(reversal, "該当銘柄なし")}
@@ -402,10 +447,11 @@ def run(root: Path) -> None:
     today_label = now.strftime("%Y-%m-%d")
     items_by_ticker = {item.get("ticker"): item for item in items}
     prediction_records = _evaluate_predictions(root, today_label, items_by_ticker)
-    momentum, reversal = _score_candidates(items, x_trend_hits)
+    market_change_pct = _market_change_pct(root)
+    momentum, reversal = _score_candidates(items, x_trend_hits, market_change_pct)
     _append_predictions(root, prediction_records, today_label, momentum, reversal)
     hit_rate_html = _hit_rate_summary(prediction_records)
-    prediction_section = _prediction_section(items, x_trend_hits, momentum, reversal, hit_rate_html)
+    prediction_section = _prediction_section(items, x_trend_hits, momentum, reversal, hit_rate_html, market_change_pct)
 
     body = f"""
     <html>
