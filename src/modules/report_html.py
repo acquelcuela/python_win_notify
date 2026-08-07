@@ -253,6 +253,86 @@ def _nikkei_section(root: Path) -> str:
     """
 
 
+def _stock_range_hit_rate_text(hit_rate: dict) -> str:
+    def _text(kind: str) -> str:
+        stats = hit_rate.get(kind) or {}
+        hits, total = stats.get("hits", 0), stats.get("total", 0)
+        return f"{hits}/{total}({hits / total * 100:.0f}%)" if total else "データ蓄積中"
+
+    return f"モメンタム型 {_text('momentum')} / リバーサル型 {_text('reversal')}"
+
+
+def _stock_range_candidate_cards(candidates: list[dict]) -> str:
+    if not candidates:
+        return '<div class="muted">該当銘柄なし</div>'
+    cards = []
+    for candidate in candidates[:5]:
+        reasons = " / ".join(candidate.get("reasons") or [])
+        # 先頭の履歴は当日変化と重なるので除外する(_watchlist_cardsと同じ理由)
+        trend_rows = []
+        for trend in (candidate.get("daily_changes") or [])[1:]:
+            trend_text, trend_color = _fmt_change(trend.get("change"), trend.get("change_pct", 0))
+            trend_rows.append(
+                f"""
+                <div class="stock-trend">
+                  <span>{html.escape(trend.get("label", ""))}</span>
+                  <strong style="color:{trend_color};">{trend_text}</strong>
+                </div>
+                """
+            )
+        position_pct = candidate.get("position_pct")
+        range_bar = ""
+        if position_pct is not None:
+            position_pct_clamped = max(0.0, min(100.0, float(position_pct)))
+            range_bar = f"""
+            <div style="background:#e5e7eb;border-radius:4px;height:8px;width:100%;margin-top:6px;">
+              <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
+            </div>
+            <div class="muted">30日レンジの{html.escape(str(position_pct))}%地点</div>
+            """
+        change_text, change_color = _fmt_change(candidate.get("change"), candidate.get("change_pct", 0))
+        cards.append(
+            f"""
+            <div class="news-hit-card">
+              <div class="news-hit-title">
+                <strong>{html.escape(candidate.get("name", ""))}</strong>
+                <span class="muted">{_yahoo_finance_link(candidate.get("ticker", "-"))} {_fmt_decimal(candidate.get("close"))}円</span>
+                <span style="float:right;font-weight:bold;">{candidate.get("score")}点</span>
+              </div>
+              <div style="color:{change_color};font-weight:bold;clear:both;">{change_text}(前日比)</div>
+              <div class="muted">{html.escape(reasons)}</div>
+              {range_bar}
+              {''.join(trend_rows)}
+            </div>
+            """
+        )
+    return "".join(cards)
+
+
+def _stock_range_score_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "stock_range.json")
+    if not payload or payload.get("status") != "ok":
+        return ""
+
+    market_change_pct = payload.get("market_change_pct")
+    market_note = ""
+    if market_change_pct is not None:
+        market_note = f'<div class="muted">日経225先物(夜間取引): {market_change_pct:+.2f}%</div>'
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">30日レンジ 翌営業日 上昇候補(機械的スコアリング・投資助言ではありません)</div>
+      <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
+      {market_note}
+      <h3>モメンタム型(上昇継続を期待)</h3>
+      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [])}
+      <h3>リバーサル型(反発を期待)</h3>
+      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [])}
+      <div class="muted" style="margin-top:8px;">これまでの的中率(翌営業日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
+    </section>
+    """
+
+
 def _watchlist_cards(items: list[dict]) -> str:
     cells = []
     for item in items:
@@ -548,7 +628,16 @@ def _stock_x_trends_section(root: Path) -> str:
     keyword_html = "".join(
         f'<span class="keyword-chip">{html.escape(str(value))}</span>' for value in keywords
     )
-    finding_html = ""
+
+    eval_by_ticker = {}
+    eval_payload = _load_json(root / "output" / "stock_x_trends_eval.json")
+    if eval_payload and eval_payload.get("status") == "ok":
+        for r in eval_payload.get("results") or []:
+            ticker = str(r.get("ticker") or "").strip()
+            if ticker:
+                eval_by_ticker[ticker] = r
+
+    finding_cells = []
     for item in stock_findings + theme_findings:
         name = str(item.get("name") or "").strip()
         ticker = str(item.get("ticker") or "").strip()
@@ -559,15 +648,40 @@ def _stock_x_trends_section(root: Path) -> str:
             if ticker and item.get("verified") is False
             else ""
         )
-        finding_html += f"""
-        <div class="news-hit-card">
-          <div class="news-hit-title"><strong>{html.escape(header)}</strong></div>
-          <div class="muted">{code_line}{html.escape(str(item.get("sentiment") or "-"))}</div>
-          <div class="news-hit-title">{html.escape(str(item.get("reason") or "-"))}</div>
-          <div class="muted">{html.escape(str(item.get("detail") or item.get("source") or "-"))}</div>
-          {unverified_note}
-        </div>
-        """
+        verdict_html = ""
+        eval_result = eval_by_ticker.get(ticker)
+        if eval_result:
+            actual_pct = eval_result.get("actual_change_pct")
+            hit = eval_result.get("hit")
+            actual_text = f"{actual_pct:+.2f}%" if actual_pct is not None else "-"
+            if hit is True:
+                verdict_text, verdict_color = "的中", "#047857"
+            elif hit is False:
+                verdict_text, verdict_color = "外れ", "#b91c1c"
+            else:
+                verdict_text, verdict_color = "-", "#6b7280"
+            verdict_html = f'<div style="font-weight:bold;color:{verdict_color};">答え合わせ: {verdict_text}(本日{actual_text})</div>'
+        finding_cells.append(
+            f"""
+            <td class="stock-grid-cell">
+              <div class="news-hit-card">
+                <div class="news-hit-title"><strong>{html.escape(header)}</strong></div>
+                <div class="muted">{code_line}{html.escape(str(item.get("sentiment") or "-"))}</div>
+                <div class="news-hit-title">{html.escape(str(item.get("reason") or "-"))}</div>
+                <div class="muted">{html.escape(str(item.get("detail") or item.get("source") or "-"))}</div>
+                {unverified_note}
+                {verdict_html}
+              </div>
+            </td>
+            """
+        )
+
+    finding_rows = []
+    for index in range(0, len(finding_cells), 2):
+        left = finding_cells[index]
+        right = finding_cells[index + 1] if index + 1 < len(finding_cells) else '<td class="stock-grid-cell"></td>'
+        finding_rows.append(f"<tr>{left}{right}</tr>")
+    finding_html = f'<table class="stock-grid">{"".join(finding_rows)}</table>' if finding_cells else ""
 
     return f"""
     <section class="panel">
@@ -605,6 +719,7 @@ def run(root: Path) -> None:
 
     body = (
         _nikkei_section(root)
+        + _stock_range_score_section(root)
         + _ai_summary_section(root)
         + _news_related_gain_section(root)
         + _watchlist_section(root)
