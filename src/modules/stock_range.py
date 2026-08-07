@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import html
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from modules.mail_gmail import send_html_mail
+from modules.stock_nikkei import _fetch_nikkei_futures_data
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -20,59 +18,6 @@ def _load_json(path: Path) -> dict | list | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return None
-
-
-def _fmt_decimal(value, digits: int = 2) -> str:
-    if value is None:
-        return "-"
-    return f"{float(value):,.{digits}f}"
-
-
-def _fmt_change(change, change_pct) -> tuple[str, str]:
-    if change is None:
-        return "-", "#334155"
-    sign = "+" if change >= 0 else ""
-    color = "#047857" if change >= 0 else "#b91c1c"
-    return f"{sign}{float(change):,.2f} ({sign}{float(change_pct):.2f}%)", color
-
-
-def _yahoo_finance_link(ticker: str) -> str:
-    ticker = str(ticker or "").strip()
-    if not ticker or ticker == "-":
-        return html.escape(ticker or "-")
-    import urllib.parse
-
-    url = f"https://finance.yahoo.co.jp/quote/{urllib.parse.quote(ticker)}"
-    return f'<a href="{url}" target="_blank" rel="noopener">{html.escape(ticker)}</a>'
-
-
-def _position_label(position_pct) -> str:
-    if position_pct is None:
-        return "-"
-    if position_pct >= 80:
-        return "高値圏"
-    if position_pct <= 20:
-        return "安値圏"
-    return "中間"
-
-
-_TREND_LABELS = {
-    "up": ("上昇中", "#047857"),
-    "down": ("下降中", "#b91c1c"),
-    "flat": ("横ばい", "#334155"),
-    "unknown": ("-", "#6b7280"),
-}
-
-
-def _trend_text(range_info: dict) -> tuple[str, str]:
-    trend = range_info.get("trend", "unknown")
-    label, color = _TREND_LABELS.get(trend, _TREND_LABELS["unknown"])
-    days = range_info.get("trend_days")
-    trend_change_pct = range_info.get("trend_change_pct")
-    if not days or trend_change_pct is None:
-        return "-", color
-    sign = "+" if trend_change_pct >= 0 else ""
-    return f"直近{days}営業日: {label}（{sign}{trend_change_pct:.2f}%）", color
 
 
 def _load_x_trend_hits(root: Path) -> dict[str, dict]:
@@ -105,41 +50,30 @@ def _x_trend_finding(item: dict, x_trend_hits: dict[str, dict]) -> dict | None:
     return x_trend_hits.get(code)
 
 
-def _x_trend_note(item: dict, x_trend_hits: dict[str, dict]) -> str:
-    finding = _x_trend_finding(item, x_trend_hits)
-    if not finding:
-        return ""
-    reason = html.escape(str(finding.get("reason") or "").strip())
-    sentiment = html.escape(str(finding.get("sentiment") or "").strip())
-    return f"""
-    <div style="margin-top:6px;padding:6px 8px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px;color:#9a3412;font-size:12px;">
-      🔥 今日Xで話題({sentiment}): {reason}
-    </div>
-    """
-
-
 _SENTIMENT_BONUS = {"strong_positive": 30, "positive": 20}
 
 
-def _market_change_pct(root: Path) -> float | None:
+def _market_change_pct() -> float | None:
     """Overnight Nikkei futures move, used to down-weight candidates ahead
     of a broad-selloff day. Deliberately uses nikkei_futures, not
     nikkei_average: stock_range runs at 06:45, before the Tokyo cash
     session opens, so the day session's change_pct doesn't exist yet at
     scoring time - using it would be scoring with information from the
-    future. The overnight futures move is what's actually known then, and
-    on 2026-07-28 it tracked the day's real move closely (-4.38% vs the
-    day session's eventual -4.44%). A 2026-07-28 check showed the reversal
-    signal (buy the 30-day low) going 0/9 that day - deep-low stocks got
-    sold even harder, not bought back, because the weakness was
-    market-wide rather than stock-specific."""
-    payload = _load_json(root / "output" / "stock_nikkei.json")
-    if not payload or payload.get("status") != "ok":
+    future. A 2026-07-28 check showed the reversal signal (buy the 30-day
+    low) going 0/9 on a day futures were down sharply overnight - deep-low
+    stocks got sold even harder, not bought back, because the weakness was
+    market-wide rather than stock-specific.
+
+    Fetched live via yfinance rather than read from output/stock_nikkei.json:
+    that file is only refreshed by stock_nikkei's own schedule slots
+    (07:00/09:30/12:15/22:45), none of which run at 06:45, so reading it
+    here would return the previous evening's snapshot - stale by up to 8
+    hours of further overnight futures movement."""
+    try:
+        return float(_fetch_nikkei_futures_data()["change_pct"])
+    except Exception as exc:
+        logging.warning("[stock_range] nikkei futures fetch failed: %s", exc)
         return None
-    data = payload.get("data") or {}
-    futures = (data.get("indices") or {}).get("nikkei_futures") or {}
-    change_pct = futures.get("change_pct")
-    return float(change_pct) if change_pct is not None else None
 
 
 def _market_penalty(market_change_pct: float | None, factor: float, cap: float) -> tuple[float, str]:
@@ -221,22 +155,6 @@ def _reversal_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
     return max(min(round(score), 100), 0), reasons
 
 
-def _candidate_rows(candidates: list[tuple[int, dict, list[str]]], empty_text: str) -> str:
-    if not candidates:
-        return f'<div style="color:#6b7280;font-size:12px;">{html.escape(empty_text)}</div>'
-    rows = ""
-    for score, item, reasons in candidates[:5]:
-        rows += f"""
-        <div style="margin-top:6px;padding:8px;background:#ffffff;border:1px solid #e5e7eb;border-radius:6px;">
-          <strong>{html.escape(item.get("name", ""))}</strong>
-          <span style="color:#6b7280;font-size:12px;"> {_yahoo_finance_link(item.get("ticker", "-"))}</span>
-          <span style="float:right;font-weight:bold;">{score}点</span>
-          <div style="color:#6b7280;font-size:12px;clear:both;">{html.escape(" / ".join(reasons))}</div>
-        </div>
-        """
-    return rows
-
-
 def _score_candidates(items: list[dict], x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[list, list]:
     momentum = sorted(
         ((s, item, r) for item in items for s, r in [_momentum_score(item, x_trend_hits, market_change_pct)] if s >= 40),
@@ -300,7 +218,15 @@ def _evaluate_predictions(root: Path, today_label: str, items_by_ticker: dict[st
     return trimmed
 
 
-def _append_predictions(root: Path, records: list[dict], today_label: str, momentum: list, reversal: list) -> None:
+def _append_predictions(
+    root: Path,
+    records: list[dict],
+    today_label: str,
+    momentum: list,
+    reversal: list,
+    x_trend_hits: dict[str, dict],
+    market_change_pct: float | None,
+) -> None:
     # stock_range runs twice a day (06:45 and 21:30); skip tickers already
     # logged today under the same candidate type so a second run doesn't
     # double-count the same day's hit-rate stats.
@@ -314,6 +240,8 @@ def _append_predictions(root: Path, records: list[dict], today_label: str, momen
             key = (kind, item.get("ticker"))
             if key in already_logged:
                 continue
+            range_info = item.get("range_30d") or {}
+            finding = _x_trend_finding(item, x_trend_hits)
             records.append(
                 {
                     "logged_date": today_label,
@@ -322,6 +250,14 @@ def _append_predictions(root: Path, records: list[dict], today_label: str, momen
                     "name": item.get("name"),
                     "score": score,
                     "reasons": reasons,
+                    # Structured scoring inputs, kept alongside the
+                    # human-readable "reasons" text so hit-rate analysis
+                    # doesn't need to parse strings back into numbers.
+                    "position_pct": range_info.get("position_pct"),
+                    "trend": range_info.get("trend"),
+                    "trend_change_pct": range_info.get("trend_change_pct"),
+                    "x_trend_sentiment": (finding or {}).get("sentiment"),
+                    "market_change_pct": market_change_pct,
                     "evaluated": False,
                     "hit": None,
                     "actual_change_pct": None,
@@ -330,72 +266,51 @@ def _append_predictions(root: Path, records: list[dict], today_label: str, momen
     _save_predictions_log(root, records)
 
 
-def _hit_rate_summary(records: list[dict]) -> str:
-    def _stats(kind: str) -> tuple[int, int]:
+def _hit_rate_stats(records: list[dict]) -> dict:
+    def _stats(kind: str) -> dict:
         evaluated = [r for r in records if r.get("type") == kind and r.get("evaluated")]
         hits = sum(1 for r in evaluated if r.get("hit"))
-        return hits, len(evaluated)
+        return {"hits": hits, "total": len(evaluated)}
 
-    m_hits, m_total = _stats("momentum")
-    r_hits, r_total = _stats("reversal")
-    m_text = f"{m_hits}/{m_total}({m_hits / m_total * 100:.0f}%)" if m_total else "データ蓄積中"
-    r_text = f"{r_hits}/{r_total}({r_hits / r_total * 100:.0f}%)" if r_total else "データ蓄積中"
-    return f'<div style="color:#6b7280;font-size:12px;margin-top:8px;">これまでの的中率(翌営業日の実際の値動きがプラスだったか): モメンタム型 {html.escape(m_text)} / リバーサル型 {html.escape(r_text)}</div>'
+    return {"momentum": _stats("momentum"), "reversal": _stats("reversal")}
 
 
-def _prediction_section(items: list[dict], x_trend_hits: dict[str, dict], momentum: list, reversal: list, hit_rate_html: str, market_change_pct: float | None) -> str:
-    market_note = ""
-    if market_change_pct is not None:
-        market_note = f'<div style="color:#6b7280;font-size:12px;">日経225先物(夜間取引): {market_change_pct:+.2f}%{" - 下落分だけ両スコアを減点しています" if market_change_pct < 0 else ""}</div>'
-    return f"""
-    <div style="margin-top:16px;padding:12px;background:#f8fafc;border-radius:8px;">
-      <h3 style="margin-top:0;">翌営業日 上昇候補(機械的スコアリング・投資助言ではありません)</h3>
-      <div style="color:#6b7280;font-size:12px;margin-bottom:8px;">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
-      {market_note}
-      <h4 style="margin:8px 0 4px;">モメンタム型(上昇継続を期待)</h4>
-      {_candidate_rows(momentum, "該当銘柄なし")}
-      <h4 style="margin:12px 0 4px;">リバーサル型(反発を期待)</h4>
-      {_candidate_rows(reversal, "該当銘柄なし")}
-      {hit_rate_html}
-    </div>
-    """
+def _candidate_payload(candidates: list[tuple[int, dict, list[str]]]) -> list[dict]:
+    return [
+        {
+            "ticker": item.get("ticker"),
+            "name": item.get("name"),
+            "score": score,
+            "reasons": reasons,
+            "daily_changes": item.get("daily_changes"),
+            "position_pct": (item.get("range_30d") or {}).get("position_pct"),
+            "close": item.get("close"),
+            "change": item.get("change"),
+            "change_pct": item.get("change_pct"),
+        }
+        for score, item, reasons in candidates
+    ]
 
 
-def _range_card(item: dict, x_trend_hits: dict[str, dict] | None = None) -> str:
-    range_info = item.get("range_30d")
-    if not range_info:
-        return ""
-    change_text, change_color = _fmt_change(
-        range_info.get("change_since_start"), range_info.get("change_pct_since_start", 0)
-    )
-    prev_change_text, prev_change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
-    position_pct = range_info.get("position_pct")
-    position_pct_clamped = max(0.0, min(100.0, float(position_pct))) if position_pct is not None else 0.0
-    position_label = _position_label(position_pct)
-    distance_from_low_pct = range_info.get("distance_from_low_pct")
-    distance_from_high_pct = range_info.get("distance_from_high_pct")
-    distance_text = "-"
-    if distance_from_low_pct is not None and distance_from_high_pct is not None:
-        distance_text = f"安値比: +{distance_from_low_pct:.2f}% / 高値比: {distance_from_high_pct:.2f}%"
-    trend_text, trend_color = _trend_text(range_info)
-    return f"""
-    <div style="margin-top:10px;padding:10px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
-      <div style="margin-bottom:4px;">
-        <strong>{html.escape(item.get("name", ""))}</strong>
-        <span style="color:#6b7280;font-size:12px;">{_yahoo_finance_link(item.get("ticker", "-"))}</span>
-      </div>
-      <div style="color:#6b7280;font-size:12px;">{html.escape(str(range_info.get("start_date", "-")))}（{html.escape(str(range_info.get("trading_days", "-")))}営業日前）: {_fmt_decimal(range_info.get("start_price"))} → 現在: {_fmt_decimal(item.get("close"))}</div>
-      <div style="color:{change_color};font-size:13px;font-weight:bold;">{change_text}(30日前比)</div>
-      <div style="color:{prev_change_color};font-size:13px;font-weight:bold;">{prev_change_text}(前日比)</div>
-      <div style="color:#6b7280;font-size:12px;">30日高値: {_fmt_decimal(range_info.get("high_price"))}（{html.escape(str(range_info.get("high_date", "-")))}） / 30日安値: {_fmt_decimal(range_info.get("low_price"))}（{html.escape(str(range_info.get("low_date", "-")))}）</div>
-      <div style="background:#e5e7eb;border-radius:4px;height:8px;width:100%;margin-top:6px;">
-        <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
-      </div>
-      <div style="color:#6b7280;font-size:12px;">現在位置: レンジの{html.escape(str(position_pct))}%地点（{position_label}） / {html.escape(distance_text)}</div>
-      <div style="color:{trend_color};font-size:12px;font-weight:bold;">{html.escape(trend_text)}</div>
-      {_x_trend_note(item, x_trend_hits or {})}
-    </div>
-    """
+def _item_payload(item: dict, x_trend_hits: dict[str, dict]) -> dict:
+    finding = _x_trend_finding(item, x_trend_hits)
+    return {
+        "ticker": item.get("ticker"),
+        "name": item.get("name"),
+        "market": item.get("market"),
+        "close": item.get("close"),
+        "change": item.get("change"),
+        "change_pct": item.get("change_pct"),
+        "range_30d": item.get("range_30d"),
+        "x_trend": (
+            {
+                "reason": finding.get("reason"),
+                "sentiment": finding.get("sentiment"),
+            }
+            if finding
+            else None
+        ),
+    }
 
 
 def run(root: Path) -> None:
@@ -429,78 +344,35 @@ def run(root: Path) -> None:
         logging.info("[stock_range] skipped: no range_30d data")
         return
 
-    japan_items = [item for item in items if item.get("market") == "japan"]
-    us_items = [item for item in items if item.get("market") == "us"]
-    other_items = [item for item in items if item.get("market") not in {"japan", "us"}]
-
     x_trend_hits = _load_x_trend_hits(root)
-
-    def _market_block(title: str, market_items: list[dict]) -> str:
-        if not market_items:
-            return ""
-        cards = "".join(_range_card(item, x_trend_hits) for item in market_items)
-        return f'<h3 style="margin-top:18px;">{html.escape(title)}</h3>{cards}'
-
-    sections = _market_block("日本株", japan_items) + _market_block("米国株", us_items) + _market_block("その他", other_items)
 
     now = datetime.now(JST)
     today_label = now.strftime("%Y-%m-%d")
     items_by_ticker = {item.get("ticker"): item for item in items}
     prediction_records = _evaluate_predictions(root, today_label, items_by_ticker)
-    market_change_pct = _market_change_pct(root)
-    momentum, reversal = _score_candidates(items, x_trend_hits, market_change_pct)
-    _append_predictions(root, prediction_records, today_label, momentum, reversal)
-    hit_rate_html = _hit_rate_summary(prediction_records)
-    prediction_section = _prediction_section(items, x_trend_hits, momentum, reversal, hit_rate_html, market_change_pct)
+    market_change_pct = _market_change_pct()
+    # Scoring candidates are Japan-listed stocks only: the momentum/reversal
+    # score never had a market-appropriate way to compare US tickers against
+    # the Nikkei-futures-based market penalty, so mixing markets here just
+    # added noise. The per-ticker range cards below still cover all markets.
+    japan_score_items = [item for item in items if item.get("market") == "japan"]
+    momentum, reversal = _score_candidates(japan_score_items, x_trend_hits, market_change_pct)
+    _append_predictions(root, prediction_records, today_label, momentum, reversal, x_trend_hits, market_change_pct)
+    hit_rate = _hit_rate_stats(prediction_records)
 
-    body = f"""
-    <html>
-      <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
-        <h2>30日レンジ位置</h2>
-        <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点 / 直近30営業日の値動きレンジの中で、現在値がどの位置にあるかを表示します。</div>
-        {prediction_section}
-        {sections}
-      </body>
-    </html>
-    """
-
-    gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
-    app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
-    mail_to = os.getenv("MAIL_TO", "").strip()
-    missing = [
-        name
-        for name, value in [
-            ("GMAIL_ADDRESS", gmail_address),
-            ("GMAIL_APP_PASSWORD", app_password),
-            ("MAIL_TO", mail_to),
-        ]
-        if not value
-    ]
     result = {
         "module": "stock_range",
         "generated_at": generated_at,
         "status": "ok",
         "ticker_count": len(items),
+        "market_change_pct": market_change_pct,
+        "items": [_item_payload(item, x_trend_hits) for item in items],
+        "momentum_candidates": _candidate_payload(momentum),
+        "reversal_candidates": _candidate_payload(reversal),
+        "hit_rate": hit_rate,
     }
-    if missing:
-        result["status"] = "error"
-        result["reason"] = "Missing Gmail settings: " + ", ".join(missing)
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.warning("[stock_range] mail skipped: missing Gmail settings: %s", ", ".join(missing))
-        return
-
-    subject = f"[NightlyBatchNotify] 30日レンジ位置 {now.strftime('%Y-%m-%d')}"
-    try:
-        send_html_mail(gmail_address, app_password, mail_to, subject, body)
-        logging.info("[stock_range] sent range report for %d tickers", len(items))
-    except Exception as exc:
-        result["status"] = "error"
-        result["reason"] = str(exc)
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.error("[stock_range] mail send failed: %s", exc)
-        return
-
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    logging.info("[stock_range] scored %d tickers (%d momentum, %d reversal candidates)", len(items), len(momentum), len(reversal))
 
 
 if __name__ == "__main__":
