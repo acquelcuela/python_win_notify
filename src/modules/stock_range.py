@@ -76,9 +76,22 @@ def _market_change_pct() -> float | None:
         return None
 
 
-def _market_penalty(market_change_pct: float | None, factor: float, cap: float) -> tuple[float, str]:
-    if market_change_pct is None or market_change_pct >= 0:
+def _market_adjustment(market_change_pct: float | None, factor: float, cap: float) -> tuple[float, str]:
+    """Symmetric market-condition adjustment: penalize on a down day, but
+    also bonus on an up day. Added 2026-08-11 after the predictions log
+    (state/stock_range_predictions.json) showed the same split holding up
+    as the sample grew past 130 records - both candidate types hit more
+    often and with a bigger average move on days the overnight futures
+    were positive (momentum 60%/+2.31% vs 44%/-0.39%; reversal
+    76%/+5.28% vs 41%/-0.50%) than the earlier penalty-only logic
+    accounted for."""
+    if market_change_pct is None:
         return 0.0, ""
+    if market_change_pct >= 0:
+        bonus = min(market_change_pct * factor, cap)
+        if not bonus:
+            return 0.0, ""
+        return bonus, f"市場全体{market_change_pct:+.1f}%のため加点"
     penalty = max(market_change_pct * factor, -cap)
     return penalty, f"市場全体{market_change_pct:+.1f}%のため減点"
 
@@ -112,10 +125,10 @@ def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
         score += bonus
         reasons.append(f"当日Xで{sentiment}に話題")
 
-    penalty, penalty_reason = _market_penalty(market_change_pct, factor=4, cap=30)
-    if penalty:
-        score += penalty
-        reasons.append(penalty_reason)
+    adjustment, adjustment_reason = _market_adjustment(market_change_pct, factor=4, cap=30)
+    if adjustment:
+        score += adjustment
+        reasons.append(adjustment_reason)
 
     return max(min(round(score), 100), 0), reasons
 
@@ -144,13 +157,14 @@ def _reversal_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
         score += bonus
         reasons.append(f"当日Xで{sentiment}に話題")
 
-    # Reversal candidates take a heavier penalty than momentum ones: "buy
-    # the 30-day low" assumes stock-specific weakness, which is exactly the
-    # assumption a market-wide selloff breaks.
-    penalty, penalty_reason = _market_penalty(market_change_pct, factor=8, cap=50)
-    if penalty:
-        score += penalty
-        reasons.append(penalty_reason)
+    # Reversal candidates get a bigger market-condition swing than momentum
+    # ones in both directions: "buy the 30-day low" assumes stock-specific
+    # weakness, which is exactly the assumption a market-wide selloff (or
+    # rally) breaks hardest.
+    adjustment, adjustment_reason = _market_adjustment(market_change_pct, factor=8, cap=50)
+    if adjustment:
+        score += adjustment
+        reasons.append(adjustment_reason)
 
     return max(min(round(score), 100), 0), reasons
 
@@ -227,9 +241,8 @@ def _append_predictions(
     x_trend_hits: dict[str, dict],
     market_change_pct: float | None,
 ) -> None:
-    # stock_range runs twice a day (06:45 and 21:30); skip tickers already
-    # logged today under the same candidate type so a second run doesn't
-    # double-count the same day's hit-rate stats.
+    # Skip tickers already logged today under the same candidate type, so a
+    # manual re-run doesn't double-count the same day's hit-rate stats.
     already_logged = {
         (r.get("type"), r.get("ticker"))
         for r in records
