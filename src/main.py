@@ -33,9 +33,13 @@ MODULE_ORDER = [
     "market_news",
     "news_movers",
     "stock_x_trends",
+    "stock_x_trends_eval",
     "ai_summary",
     "post_x_magazine",
     "stock_range",
+    "stock_range_mail",
+    "stock_range_eval",
+    "stock_range_eval_mail",
     "report_html",
     "mail_gmail",
 ]

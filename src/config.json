@@ -1,11 +1,11 @@
 {
   "batch_schedule": [
-    {"time": "06:45", "modules": ["stock_range"]},
+    {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
       "time": "07:00",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
-    {"time": "07:30", "days": "all", "modules": ["post_x_magazine"]},
+    {"time": "07:45", "days": "all", "modules": ["post_x_magazine"]},
     {
       "time": "09:30",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
@@ -14,13 +14,13 @@
       "time": "12:15",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
     },
-    {"time": "12:45", "days": "all", "modules": ["post_x_magazine"]},
-    {"time": "17:30", "days": "all", "modules": ["post_x_magazine"]},
-    {"time": "21:00", "days": "all", "modules": ["post_x_magazine"]},
-    {"time": "21:30", "modules": ["stock_range"]},
+    {"time": "12:30", "days": "all", "modules": ["post_x_magazine"]},
+    {"time": "17:00", "modules": ["stock_range_eval", "stock_range_eval_mail"]},
+    {"time": "21:30", "modules": ["stock_range", "stock_range_mail"]},
+    {"time": "22:00", "days": "all", "modules": ["post_x_magazine"]},
     {
       "time": "22:45",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "ai_summary", "report_html", "mail_gmail"]
     }
   ],
   "batch_window_minutes": 14,
@@ -33,9 +33,13 @@
     "market_news": true,
     "news_movers": true,
     "stock_x_trends": true,
+    "stock_x_trends_eval": true,
     "ai_summary": true,
     "post_x_magazine": true,
     "stock_range": true,
+    "stock_range_mail": true,
+    "stock_range_eval": true,
+    "stock_range_eval_mail": true,
     "report_html": true,
     "mail_gmail": true
   },
@@ -163,22 +167,6 @@
   "watchlist": {
     "tickers": [
       {
-        "ticker": "8035.T",
-        "name": "東京エレクトロン"
-      },
-      {
-        "ticker": "1570.T",
-        "name": "NEXT FUNDS 日経平均レバレッジ"
-      },
-      {
-        "ticker": "3436.T",
-        "name": "SUMCO"
-      },
-      {
-        "ticker": "200A.T",
-        "name": "NEXT FUNDS 日経半導体株"
-      },
-      {
         "ticker": "2962.T",
         "name": "テクニスコ"
       },
@@ -193,10 +181,6 @@
       {
         "ticker": "7762.T",
         "name": "シチズン時計"
-      },
-      {
-        "ticker": "6976.T",
-        "name": "太陽誘電"
       },
       {
         "ticker": "5016.T",
@@ -215,10 +199,6 @@
         "name": "IHI"
       },
       {
-        "ticker": "5803.T",
-        "name": "フジクラ"
-      },
-      {
         "ticker": "6532.T",
         "name": "ベイカレント"
       },
@@ -233,6 +213,50 @@
       {
         "ticker": "7175.T",
         "name": "今村証券"
+      },
+      {
+        "ticker": "5802.T",
+        "name": "住友電気工業"
+      },
+      {
+        "ticker": "7267.T",
+        "name": "ホンダ"
+      },
+      {
+        "ticker": "4527.T",
+        "name": "ロート製薬"
+      },
+      {
+        "ticker": "3103.T",
+        "name": "ユニチカ"
+      },
+      {
+        "ticker": "3110.T",
+        "name": "日東紡"
+      },
+      {
+        "ticker": "8001.T",
+        "name": "伊藤忠商事"
+      },
+      {
+        "ticker": "9501.T",
+        "name": "東京電力ホールディングス"
+      },
+      {
+        "ticker": "8308.T",
+        "name": "りそなホールディングス"
+      },
+      {
+        "ticker": "8053.T",
+        "name": "住友商事"
+      },
+      {
+        "ticker": "5076.T",
+        "name": "インフロニア・ホールディングス"
+      },
+      {
+        "ticker": "8267.T",
+        "name": "イオン"
       },
       {
         "ticker": "AAPL",
