@@ -12,6 +12,75 @@ from modules.stock_range import _load_predictions_log, _save_predictions_log
 
 JST = timezone(timedelta(hours=9), "JST")
 
+MARKET_FORECAST_LOG_PATH = Path("state") / "market_forecast_accuracy.json"
+FORECAST_LOG_RETENTION_DAYS = 90
+
+
+def _load_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def _is_from_today(payload: dict, now: datetime) -> bool:
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        return generated_at.astimezone(JST).date() == now.date()
+    except (TypeError, ValueError):
+        return False
+
+
+def _log_market_forecast_accuracy(root: Path, now: datetime, today_label: str) -> None:
+    """Logs predicted (overnight Nikkei futures, read by stock_range at
+    06:45 scoring time) vs actual (day-session Nikkei average) change_pct,
+    so the quality of the futures-based market signal used for scoring can
+    be checked later - independent of whether any candidates were logged
+    or evaluated today."""
+    range_payload = _load_json(root / "output" / "stock_range.json")
+    if not range_payload or range_payload.get("status") != "ok" or not _is_from_today(range_payload, now):
+        return
+    predicted = range_payload.get("market_change_pct")
+    if predicted is None:
+        return
+
+    nikkei_payload = _load_json(root / "output" / "stock_nikkei.json")
+    if not nikkei_payload or nikkei_payload.get("status") != "ok" or not _is_from_today(nikkei_payload, now):
+        return
+    actual = ((nikkei_payload.get("data") or {}).get("indices") or {}).get("nikkei_average", {}).get("change_pct")
+    if actual is None:
+        return
+
+    path = root / MARKET_FORECAST_LOG_PATH
+    records = _load_json(path) or []
+    if not isinstance(records, list):
+        records = []
+    if any(r.get("date") == today_label for r in records):
+        return
+
+    records.append(
+        {
+            "date": today_label,
+            "predicted_change_pct": predicted,
+            "actual_change_pct": actual,
+            "diff": round(actual - predicted, 2),
+            "same_sign": (predicted >= 0) == (actual >= 0),
+        }
+    )
+    cutoff_label = (now - timedelta(days=FORECAST_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
+    trimmed = [r for r in records if r.get("date", "9999-99-99") >= cutoff_label]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(trimmed, ensure_ascii=False, indent=2), encoding="utf-8")
+    logging.info(
+        "[stock_range_eval] logged market forecast accuracy: predicted=%+.2f%% actual=%+.2f%%",
+        predicted,
+        actual,
+    )
+
 
 def _fetch_today_change_pct(ticker_symbol: str, today_date) -> float | None:
     """Live same-day change vs previous close. Returns None if the latest
@@ -45,6 +114,8 @@ def run(root: Path) -> None:
     now = datetime.now(JST)
     generated_at = now.isoformat()
     today_label = now.strftime("%Y-%m-%d")
+
+    _log_market_forecast_accuracy(root, now, today_label)
 
     records = _load_predictions_log(root)
     todays_candidates = [
