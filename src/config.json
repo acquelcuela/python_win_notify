@@ -15,13 +15,11 @@
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
     },
     {"time": "12:30", "days": "all", "modules": ["post_x_magazine"]},
-    {"time": "17:00", "modules": ["stock_range_eval", "stock_range_eval_mail"]},
-    {"time": "21:30", "modules": ["stock_range", "stock_range_mail"]},
-    {"time": "22:00", "days": "all", "modules": ["post_x_magazine"]},
     {
-      "time": "22:45",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "ai_summary", "report_html", "mail_gmail"]
-    }
+      "time": "21:00",
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
+    },
+    {"time": "22:00", "days": "all", "modules": ["post_x_magazine"]}
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,
@@ -39,7 +37,6 @@
     "stock_range": true,
     "stock_range_mail": true,
     "stock_range_eval": true,
-    "stock_range_eval_mail": true,
     "report_html": true,
     "mail_gmail": true
   },

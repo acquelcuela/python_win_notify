@@ -333,6 +333,69 @@ def _stock_range_score_section(root: Path) -> str:
     """
 
 
+def _stock_range_eval_result_cards(results: list[dict]) -> str:
+    if not results:
+        return '<div class="muted">該当銘柄なし</div>'
+    cards = []
+    for r in results:
+        verdict_text, verdict_color = ("的中", "#047857") if r.get("hit") else ("不発", "#b91c1c")
+        actual_pct = r.get("actual_change_pct")
+        actual_text = f"{actual_pct:+.2f}%" if actual_pct is not None else "-"
+        reasons = " / ".join(r.get("reasons") or [])
+        cards.append(
+            f"""
+            <div class="news-hit-card">
+              <div class="news-hit-title">
+                <strong>{html.escape(r.get("name", ""))}</strong>
+                <span class="muted">{_yahoo_finance_link(r.get("ticker", "-"))}</span>
+                <span style="float:right;font-weight:bold;color:{verdict_color};">{verdict_text}</span>
+              </div>
+              <div class="muted" style="clear:both;">スコア{r.get("score")}点 / 本日{actual_text} / {html.escape(reasons)}</div>
+            </div>
+            """
+        )
+    return "".join(cards)
+
+
+def _stock_range_eval_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "stock_range_eval.json")
+    if not payload or payload.get("status") != "ok":
+        return ""
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        if generated_at.astimezone(JST).date() != datetime.now(JST).date():
+            return ""
+    except (TypeError, ValueError):
+        return ""
+
+    results = payload.get("results") or []
+    momentum = [r for r in results if r.get("type") == "momentum"]
+    reversal = [r for r in results if r.get("type") == "reversal"]
+    hit_count = payload.get("hit_count", 0)
+    evaluated_count = payload.get("evaluated_count", len(results))
+    skipped_count = payload.get("skipped_count", 0)
+    skipped_note = (
+        f'<div class="muted">{skipped_count}件は本日終値が未取得のため未評価です(米国株など)。</div>'
+        if skipped_count
+        else ""
+    )
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">30日レンジ 本日の的中結果</div>
+      <div class="muted">今朝の30日レンジ候補が、本日の値動きでプラスになったかを評価しています。</div>
+      <div style="margin-top:8px;font-weight:bold;">本日 {hit_count}/{evaluated_count} 的中</div>
+      {skipped_note}
+      <h3>モメンタム型</h3>
+      {_stock_range_eval_result_cards(momentum)}
+      <h3>リバーサル型</h3>
+      {_stock_range_eval_result_cards(reversal)}
+    </section>
+    """
+
+
 def _watchlist_cards(items: list[dict]) -> str:
     cells = []
     for item in items:
@@ -720,6 +783,7 @@ def run(root: Path) -> None:
     body = (
         _nikkei_section(root)
         + _stock_range_score_section(root)
+        + _stock_range_eval_section(root)
         + _ai_summary_section(root)
         + _news_related_gain_section(root)
         + _watchlist_section(root)

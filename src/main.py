@@ -39,7 +39,6 @@ MODULE_ORDER = [
     "stock_range",
     "stock_range_mail",
     "stock_range_eval",
-    "stock_range_eval_mail",
     "report_html",
     "mail_gmail",
 ]
