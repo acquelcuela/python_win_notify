@@ -33,7 +33,7 @@
     "stock_x_trends": true,
     "stock_x_trends_eval": true,
     "ai_summary": true,
-    "post_x_magazine": true,
+    "post_x_magazine": false,
     "stock_range": true,
     "stock_range_mail": true,
     "stock_range_eval": true,
@@ -236,10 +236,6 @@
         "name": "伊藤忠商事"
       },
       {
-        "ticker": "9501.T",
-        "name": "東京電力ホールディングス"
-      },
-      {
         "ticker": "8308.T",
         "name": "りそなホールディングス"
       },
@@ -264,10 +260,6 @@
         "name": "稲畑産業"
       },
       {
-        "ticker": "7283.T",
-        "name": "愛三工業"
-      },
-      {
         "ticker": "7272.T",
         "name": "ヤマハ発動機"
       },
@@ -278,10 +270,6 @@
       {
         "ticker": "7231.T",
         "name": "トピー工業"
-      },
-      {
-        "ticker": "7128.T",
-        "name": "ユニソルホールディングス"
       },
       {
         "ticker": "6905.T",
