@@ -22,6 +22,16 @@ def _load_json(path: Path) -> dict | None:
         return None
 
 
+def _generated_at_label(payload: dict) -> str:
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        return generated_at.astimezone(JST).strftime("%Y-%m-%d %H:%M JST")
+    except (TypeError, ValueError):
+        return "-"
+
+
 def _fmt_decimal(value, digits: int = 2) -> str:
     if value is None:
         return "-"
@@ -157,11 +167,12 @@ def run(root: Path) -> None:
 
     sections = _market_block("日本株", japan_items) + _market_block("米国株", us_items) + _market_block("その他", other_items)
 
+    calculated_label = _generated_at_label(data)
     body = f"""
     <html>
       <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
         <h2>30日レンジ位置</h2>
-        <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点 / 直近30営業日の値動きレンジの中で、現在値がどの位置にあるかを表示します。</div>
+        <div style="color:#6b7280;font-size:12px;">算出時刻: {calculated_label} / 直近30営業日の値動きレンジの中で、現在値がどの位置にあるかを表示します。</div>
         {sections}
       </body>
     </html>

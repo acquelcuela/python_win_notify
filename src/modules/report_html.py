@@ -55,6 +55,16 @@ def _load_json(path: Path) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _generated_at_label(payload: dict) -> str:
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        return generated_at.astimezone(JST).strftime("%Y-%m-%d %H:%M JST")
+    except (TypeError, ValueError):
+        return "-"
+
+
 def _data_alias_terms(root: Path, text: str) -> list[str]:
     terms = []
     data_path = root / "data" / "data_j.csv"
@@ -321,14 +331,15 @@ def _stock_range_score_section(root: Path) -> str:
 
     return f"""
     <section class="panel">
-      <div class="section-title">30日レンジ 翌営業日 上昇候補(機械的スコアリング・投資助言ではありません)</div>
+      <div class="section-title">30日レンジ 本日の上昇候補(機械的スコアリング・投資助言ではありません)</div>
+      <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝06:45の市場が開く前に算出し、本日の値動きを対象にした候補です。終日この結果を表示します)</div>
       <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
       {market_note}
       <h3>モメンタム型(上昇継続を期待)</h3>
       {_stock_range_candidate_cards(payload.get("momentum_candidates") or [])}
       <h3>リバーサル型(反発を期待)</h3>
       {_stock_range_candidate_cards(payload.get("reversal_candidates") or [])}
-      <div class="muted" style="margin-top:8px;">これまでの的中率(翌営業日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
+      <div class="muted" style="margin-top:8px;">これまでの的中率(当日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
     </section>
     """
 
@@ -385,6 +396,7 @@ def _stock_range_eval_section(root: Path) -> str:
     return f"""
     <section class="panel">
       <div class="section-title">30日レンジ 本日の的中結果</div>
+      <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・夜21:00に算出)</div>
       <div class="muted">今朝の30日レンジ候補が、本日の値動きでプラスになったかを評価しています。</div>
       <div style="margin-top:8px;font-weight:bold;">本日 {hit_count}/{evaluated_count} 的中</div>
       {skipped_note}
@@ -782,8 +794,8 @@ def run(root: Path) -> None:
 
     body = (
         _nikkei_section(root)
-        + _stock_range_score_section(root)
         + _stock_range_eval_section(root)
+        + _stock_range_score_section(root)
         + _ai_summary_section(root)
         + _news_related_gain_section(root)
         + _watchlist_section(root)
