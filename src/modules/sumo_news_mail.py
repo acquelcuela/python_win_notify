@@ -83,7 +83,10 @@ def run(root: Path) -> None:
     generated_at = now.isoformat()
 
     data = _load_json(root / "output" / "sumo_news.json")
-    if not data or data.get("status") != "ok" or not data.get("data"):
+    if not data:
+        # sumo_news never ran (missing output entirely) - a pipeline
+        # problem rather than "no news today", so stay silent rather than
+        # sending a misleading "no news" mail.
         result = {
             "module": "sumo_news_mail",
             "generated_at": generated_at,
@@ -94,16 +97,19 @@ def run(root: Path) -> None:
         logging.info("[sumo_news_mail] skipped: sumo_news output is not available")
         return
 
-    items = data["data"]
-    sections = ""
-    for wrestler, peak_rank, group in _group_by_wrestler(items):
-        cards = "".join(_news_card(item) for item in group)
-        rank_badge = (
-            f'<span style="color:#6b7280;font-size:12px;font-weight:normal;">(最高位: {html.escape(peak_rank)})</span>'
-            if peak_rank
-            else ""
-        )
-        sections += f'<h3 style="margin-top:16px;">{html.escape(wrestler)} {rank_badge}</h3>{cards}'
+    items = data.get("data") or []
+    if items:
+        sections = ""
+        for wrestler, peak_rank, group in _group_by_wrestler(items):
+            cards = "".join(_news_card(item) for item in group)
+            rank_badge = (
+                f'<span style="color:#6b7280;font-size:12px;font-weight:normal;">(最高位: {html.escape(peak_rank)})</span>'
+                if peak_rank
+                else ""
+            )
+            sections += f'<h3 style="margin-top:16px;">{html.escape(wrestler)} {rank_badge}</h3>{cards}'
+    else:
+        sections = '<div style="color:#6b7280;">本日は大相撲関連の新着記事がありませんでした。</div>'
 
     body = f"""
     <html>
