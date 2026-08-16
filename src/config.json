@@ -21,7 +21,8 @@
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {"time": "22:00", "days": "all", "modules": ["post_x_magazine"]},
-    {"time": "22:30", "days": "all", "modules": ["sumo_news", "sumo_news_mail"]}
+    {"time": "22:30", "days": "all", "modules": ["sumo_news", "sumo_news_mail"]},
+    {"time": "23:00", "days": "all", "modules": ["onedrive_check"]}
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,
@@ -41,6 +42,7 @@
     "stock_range_eval": true,
     "sumo_news": true,
     "sumo_news_mail": true,
+    "onedrive_check": true,
     "report_html": true,
     "mail_gmail": true
   },
@@ -188,6 +190,9 @@
     ],
     "max_items": 15,
     "lookback_hours": 14
+  },
+  "onedrive_check": {
+    "path": "C:\\Users\\user\\OneDrive - LIFEWORK\\send@OneDrive2027"
   },
   "post_x_magazine": {
     "enabled": true,
