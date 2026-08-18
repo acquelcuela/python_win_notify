@@ -5,7 +5,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import yfinance as yf
+
 from modules.stock_nikkei import _fetch_nikkei_futures_data
+from modules.stock_watchlist import _range_position
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -305,6 +308,47 @@ def _candidate_payload(candidates: list[tuple[int, dict, list[str]]]) -> list[di
     ]
 
 
+INDEX_TARGETS = [
+    {"ticker": "^N225", "name": "日経平均"},
+    {"ticker": "1306.T", "name": "TOPIX"},
+]
+
+
+def _fetch_index_range_items() -> list[dict]:
+    """30-day range for the broad-market indices themselves, so the range
+    mail always has a market-wide reference card at the top - independent
+    of the japan-stock-only momentum/reversal scoring below, which never
+    includes these."""
+    items = []
+    for target in INDEX_TARGETS:
+        try:
+            ticker = yf.Ticker(target["ticker"])
+            hist = ticker.history(period="30d", interval="1d", auto_adjust=False)
+            hist = hist.dropna(subset=["Close"])
+            if len(hist) < 2:
+                continue
+            latest = hist.iloc[-1]
+            previous = hist.iloc[-2]
+            close = float(latest["Close"])
+            prev_close = float(previous["Close"])
+            change = close - prev_close
+            change_pct = (change / prev_close * 100) if prev_close else 0.0
+            items.append(
+                {
+                    "ticker": target["ticker"],
+                    "name": target["name"],
+                    "market": "index",
+                    "close": round(close, 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 2),
+                    "range_30d": _range_position(hist),
+                }
+            )
+        except Exception as exc:
+            logging.warning("[stock_range] index range fetch failed for %s: %s", target["ticker"], exc)
+    return items
+
+
 def _item_payload(item: dict, x_trend_hits: dict[str, dict]) -> dict:
     finding = _x_trend_finding(item, x_trend_hits)
     return {
@@ -379,6 +423,7 @@ def run(root: Path) -> None:
         "status": "ok",
         "ticker_count": len(items),
         "market_change_pct": market_change_pct,
+        "index_items": _fetch_index_range_items(),
         "items": [_item_payload(item, x_trend_hits) for item in items],
         "momentum_candidates": _candidate_payload(momentum),
         "reversal_candidates": _candidate_payload(reversal),

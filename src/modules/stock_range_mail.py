@@ -48,7 +48,7 @@ def _fmt_change(change, change_pct) -> tuple[str, str]:
 
 def _yahoo_finance_link(ticker: str) -> str:
     ticker = str(ticker or "").strip()
-    if not ticker or ticker == "-":
+    if not ticker or ticker == "-" or ticker.startswith("^"):
         return html.escape(ticker or "-")
     import urllib.parse
 
@@ -155,6 +155,7 @@ def run(root: Path) -> None:
         return
 
     items = data.get("items") or []
+    index_items = data.get("index_items") or []
     japan_items = [item for item in items if item.get("market") == "japan"]
     us_items = [item for item in items if item.get("market") == "us"]
     other_items = [item for item in items if item.get("market") not in {"japan", "us"}]
@@ -165,7 +166,15 @@ def run(root: Path) -> None:
         cards = "".join(_range_card(item) for item in market_items)
         return f'<h3 style="margin-top:18px;">{html.escape(title)}</h3>{cards}'
 
-    sections = _market_block("日本株", japan_items) + _market_block("米国株", us_items) + _market_block("その他", other_items)
+    # Indices always lead the report, ahead of the per-stock sections, so
+    # the day's individual candidates can be read against the broad-market
+    # range they're moving within.
+    sections = (
+        _market_block("主要指数(日経平均・TOPIX)", index_items)
+        + _market_block("日本株", japan_items)
+        + _market_block("米国株", us_items)
+        + _market_block("その他", other_items)
+    )
 
     calculated_label = _generated_at_label(data)
     body = f"""

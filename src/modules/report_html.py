@@ -13,7 +13,7 @@ JST = timezone(timedelta(hours=9), "JST")
 
 def _yahoo_finance_link(ticker: str) -> str:
     ticker = str(ticker or "").strip()
-    if not ticker or ticker == "-":
+    if not ticker or ticker == "-" or ticker.startswith("^"):
         return html.escape(ticker or "-")
     url = f"https://finance.yahoo.co.jp/quote/{urllib.parse.quote(ticker)}"
     return f'<a href="{url}" target="_blank" rel="noopener">{html.escape(ticker)}</a>'
@@ -250,6 +250,9 @@ def _nikkei_section(root: Path) -> str:
         warning_items = "".join(f"<li>{html.escape(item)}</li>" for item in payload["warnings"])
         warnings = f'<div class="note"><strong>注意</strong><ul>{warning_items}</ul></div>'
 
+    range_payload = _load_json(root / "output" / "stock_range.json") or {}
+    range_cards = _index_range_cards(range_payload.get("index_items") or [])
+
     return f"""
     <section class="panel market-{change_state}">
       <div class="section-title">日経平均 / TOPIX 市場概況</div>
@@ -259,6 +262,7 @@ def _nikkei_section(root: Path) -> str:
       </div>
       {index_grid}
       {warnings}
+      {range_cards}
     </section>
     """
 
@@ -317,6 +321,40 @@ def _stock_range_candidate_cards(candidates: list[dict]) -> str:
             """
         )
     return "".join(cards)
+
+
+def _index_range_card(item: dict) -> str:
+    range_info = item.get("range_30d")
+    if not range_info:
+        return ""
+    change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
+    position_pct = range_info.get("position_pct")
+    position_pct_clamped = max(0.0, min(100.0, float(position_pct))) if position_pct is not None else 0.0
+    return f"""
+    <div class="news-hit-card">
+      <div class="news-hit-title">
+        <strong>{html.escape(item.get("name", ""))}</strong>
+        <span class="muted">{_yahoo_finance_link(item.get("ticker", "-"))}</span>
+        <span style="float:right;font-weight:bold;">{_fmt_decimal(item.get("close"))}</span>
+      </div>
+      <div style="color:{change_color};font-weight:bold;clear:both;">{change_text}(前日比)</div>
+      <div class="muted">30日高値: {_fmt_decimal(range_info.get("high_price"))}（{html.escape(str(range_info.get("high_date", "-")))}） / 30日安値: {_fmt_decimal(range_info.get("low_price"))}（{html.escape(str(range_info.get("low_date", "-")))}）</div>
+      <div style="background:#e5e7eb;border-radius:4px;height:8px;width:100%;margin-top:6px;">
+        <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
+      </div>
+      <div class="muted">30日レンジの{html.escape(str(position_pct))}%地点</div>
+    </div>
+    """
+
+
+def _index_range_cards(index_items: list[dict]) -> str:
+    cards = "".join(_index_range_card(item) for item in index_items)
+    if not cards:
+        return ""
+    return f"""
+    <h3>主要指数(日経平均・TOPIX)</h3>
+    {cards}
+    """
 
 
 def _stock_range_score_section(root: Path) -> str:
@@ -794,9 +832,9 @@ def run(root: Path) -> None:
 
     body = (
         _nikkei_section(root)
+        + _ai_summary_section(root)
         + _stock_range_eval_section(root)
         + _stock_range_score_section(root)
-        + _ai_summary_section(root)
         + _news_related_gain_section(root)
         + _watchlist_section(root)
         + _dividend_section(root)

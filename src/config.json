@@ -17,12 +17,17 @@
     {"time": "12:00", "days": "all", "modules": ["sumo_news", "sumo_news_mail"]},
     {"time": "12:30", "days": "all", "modules": ["post_x_magazine"]},
     {
-      "time": "21:00",
+      "time": "17:30",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {"time": "22:00", "days": "all", "modules": ["post_x_magazine"]},
     {"time": "22:30", "days": "all", "modules": ["sumo_news", "sumo_news_mail"]},
-    {"time": "23:00", "days": "all", "modules": ["onedrive_check"]}
+    {
+      "time": "23:00",
+      "days": "all",
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+    },
+    {"time": "23:45", "days": "all", "modules": ["onedrive_check"]}
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,

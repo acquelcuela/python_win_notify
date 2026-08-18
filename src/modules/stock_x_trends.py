@@ -441,23 +441,37 @@ def run(root: Path) -> None:
 
     context = _market_context(root)
 
+    # Twice-daily cycle: 23:00 always starts a fresh list (today's overnight
+    # picks), 07:00 adds the morning's new findings on top of that same list
+    # with duplicates removed, so the 09:30/12:15 reports - which don't
+    # re-fetch - keep showing that combined set until 23:00 resets it again.
+    schedule_key = os.getenv("BATCH_SCHEDULE_KEY", "").strip()
+    merged_with_previous = False
+
     try:
         data, passes_used = _run_grok_searches(api_key, model, max_tokens, context)
         data = _verify_findings(root, data)
+        if schedule_key == "07:00":
+            previous_payload = _load_json(output_path)
+            if isinstance(previous_payload, dict) and previous_payload.get("status") == "ok" and previous_payload.get("data"):
+                data = _merge_payload(previous_payload["data"], data)
+                merged_with_previous = True
         payload = {
             "module": "stock_x_trends",
             "generated_at": generated_at,
             "status": "ok",
             "model": model,
             "search_passes": passes_used,
+            "merged_with_previous": merged_with_previous,
             "data": data,
         }
         logging.info(
-            "[stock_x_trends] collected %s common keywords, %s stock findings and %s theme findings using %s pass(es)",
+            "[stock_x_trends] collected %s common keywords, %s stock findings and %s theme findings using %s pass(es)%s",
             len(data["common_keywords"]),
             len(data["stock_findings"]),
             len(data["theme_findings"]),
             len(passes_used),
+            " (merged with previous cycle)" if merged_with_previous else "",
         )
     except Exception as exc:
         payload = {
