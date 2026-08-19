@@ -15,17 +15,19 @@ SEEN_LOG_PATH = Path("state") / "keyword_watch_seen.json"
 SEEN_LOG_RETENTION_DAYS = 100
 
 
+CONFIG_PATH = Path("keyword_watch_config.json")
+
+
 def _load_config(root: Path) -> dict:
-    config_path = root / "config.json"
+    config_path = root / CONFIG_PATH
     if not config_path.exists():
         return {}
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
-        logging.warning("[keyword_watch] config.json is invalid; using defaults.")
+        logging.warning("[keyword_watch] %s is invalid; using defaults.", CONFIG_PATH)
         return {}
-    payload = config.get("keyword_watch", {})
-    return payload if isinstance(payload, dict) else {}
+    return config if isinstance(config, dict) else {}
 
 
 def _is_scheduled_today(config: dict, now: datetime) -> bool:

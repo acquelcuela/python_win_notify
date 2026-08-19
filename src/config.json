@@ -61,14 +61,6 @@
     "provider": "gemini",
     "model": "gemini-3.1-flash-lite"
   },
-  "keyword_watch": {
-    "queries": ["valensia", "robby valentine", "dashboard confessional", "コミックボンボン", "がんばれゴエモン", "メダロット", "スパイラル 推理の絆"],
-    "day_of_month": 1
-  },
-  "marketplace_watch": {
-    "keywords": ["HUAWEI WATCH D2"],
-    "max_items": 30
-  },
   "stock_x_trends": {
     "enabled": true,
     "model": "grok-4.3",
