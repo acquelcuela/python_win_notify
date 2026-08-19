@@ -21,6 +21,33 @@ _EXPECTED_DIRECTION = {
 
 PREDICTIONS_LOG_PATH = Path("state") / "stock_x_trends_predictions.json"
 PREDICTION_LOG_RETENTION_DAYS = 90
+HISTORY_DIR_NAME = "history"
+HISTORY_RETENTION_DAYS = 30
+
+
+def _archive_history(root: Path, payload: dict) -> None:
+    """Keep a dated copy of each day's evaluation snapshot, mirroring
+    stock_x_trends's own history archive - so which extraction a given day's
+    evaluation judged (via trends_generated_at) can still be looked up later,
+    not just the hit/miss tally in state/stock_x_trends_predictions.json."""
+    history_dir = root / "output" / HISTORY_DIR_NAME
+    history_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = payload.get("generated_at") or datetime.now(JST).isoformat()
+    try:
+        date_label = datetime.fromisoformat(str(generated_at)).astimezone(JST).strftime("%Y%m%d")
+    except (TypeError, ValueError):
+        date_label = datetime.now(JST).strftime("%Y%m%d")
+    history_path = history_dir / f"stock_x_trends_eval_{date_label}.json"
+    history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    cutoff = datetime.now(JST) - timedelta(days=HISTORY_RETENTION_DAYS)
+    for existing in history_dir.glob("stock_x_trends_eval_*.json"):
+        try:
+            file_date = datetime.strptime(existing.stem.split("_")[-1], "%Y%m%d").replace(tzinfo=JST)
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            existing.unlink(missing_ok=True)
 
 
 def _load_json(path: Path) -> dict | None:
@@ -188,11 +215,17 @@ def run(root: Path) -> None:
         "module": "stock_x_trends_eval",
         "generated_at": generated_at,
         "status": "ok",
+        # Ties this evaluation to the exact stock_x_trends.json generation it
+        # judged, so a later fetch (e.g. the 23:00 reset) that produces a
+        # differently-timestamped file is recognizable as not yet evaluated,
+        # even if a ticker happens to reappear in the new list.
+        "trends_generated_at": payload.get("generated_at"),
         "evaluated_count": len(judged),
         "hit_count": hit_count,
         "results": results,
     }
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    _archive_history(root, result)
     logging.info("[stock_x_trends_eval] evaluated %d findings (%d hits of %d judged)", len(results), hit_count, len(judged))
 
 

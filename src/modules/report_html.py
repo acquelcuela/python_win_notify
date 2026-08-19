@@ -744,7 +744,16 @@ def _stock_x_trends_section(root: Path) -> str:
 
     eval_by_ticker = {}
     eval_payload = _load_json(root / "output" / "stock_x_trends_eval.json")
-    if eval_payload and eval_payload.get("status") == "ok":
+    # Only attach verdicts if this evaluation actually judged the exact
+    # stock_x_trends.json generation being displayed here - otherwise (e.g.
+    # a fresh 23:00 reset that hasn't been evaluated yet) a leftover verdict
+    # from an earlier cycle could wrongly attach to a same-ticker candidate
+    # in the new, not-yet-evaluated list.
+    if (
+        eval_payload
+        and eval_payload.get("status") == "ok"
+        and eval_payload.get("trends_generated_at") == payload.get("generated_at")
+    ):
         for r in eval_payload.get("results") or []:
             ticker = str(r.get("ticker") or "").strip()
             if ticker:
@@ -833,9 +842,9 @@ def run(root: Path) -> None:
     body = (
         _nikkei_section(root)
         + _ai_summary_section(root)
+        + _news_related_gain_section(root)
         + _stock_range_eval_section(root)
         + _stock_range_score_section(root)
-        + _news_related_gain_section(root)
         + _watchlist_section(root)
         + _dividend_section(root)
         + _stock_x_trends_section(root)
