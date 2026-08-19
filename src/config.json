@@ -28,7 +28,8 @@
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
     {"time": "23:45", "days": "all", "modules": ["onedrive_check"]},
-    {"time": "00:30", "days": "all", "modules": ["keyword_watch", "keyword_watch_mail"]}
+    {"time": "00:30", "days": "all", "modules": ["keyword_watch", "keyword_watch_mail"]},
+    {"time": "21:00", "days": "all", "modules": ["marketplace_watch", "marketplace_watch_mail"]}
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,
@@ -50,6 +51,8 @@
     "sumo_news_mail": true,
     "keyword_watch": true,
     "keyword_watch_mail": true,
+    "marketplace_watch": true,
+    "marketplace_watch_mail": true,
     "onedrive_check": true,
     "report_html": true,
     "mail_gmail": true
@@ -61,6 +64,10 @@
   "keyword_watch": {
     "queries": ["valensia", "robby valentine", "dashboard confessional", "コミックボンボン", "がんばれゴエモン", "メダロット", "スパイラル 推理の絆"],
     "day_of_month": 1
+  },
+  "marketplace_watch": {
+    "keywords": ["HUAWEI WATCH D2"],
+    "max_items": 30
   },
   "stock_x_trends": {
     "enabled": true,

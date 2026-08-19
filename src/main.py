@@ -43,6 +43,8 @@ MODULE_ORDER = [
     "sumo_news_mail",
     "keyword_watch",
     "keyword_watch_mail",
+    "marketplace_watch",
+    "marketplace_watch_mail",
     "onedrive_check",
     "report_html",
     "mail_gmail",
