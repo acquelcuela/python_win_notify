@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -17,12 +18,17 @@ from modules.gemini_pricing import GeminiUsageTracker
 
 JST = timezone(timedelta(hours=9), "JST")
 NOTE_SEARCH_URL = "https://note.com/api/v3/searches"
+YAHOO_RANKING_URL = "https://finance.yahoo.co.jp/stocks/ranking/bbs"
+YAHOO_RANKING_PAGES = [1, 2]
 DEFAULT_QUERIES = ["高配当株", "配当生活", "FIRE 配当"]
 DEFAULT_DAILY_COUNT = 2
 DEFAULT_CANDIDATE_COUNT = 5
 DEFAULT_SIMILARITY_THRESHOLD = 0.2
 DEFAULT_TREND_SEED_COUNT = 15
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
+
+STOCK_SEEN_LOG_PATH = Path("state") / "note_stock_ranking_seen.json"
+STOCK_SEEN_LOG_RETENTION_DAYS = 365
 
 # Mirrors docs/note_magazine_categories_20260709.md - keeps proposed concepts
 # aligned with the account's actual content buckets instead of drifting into
@@ -114,6 +120,85 @@ def _collect_trend_seeds(queries: list[str], seed_count: int) -> tuple[list[dict
 
     deduped.sort(key=lambda n: n["like_count"], reverse=True)
     return deduped[:seed_count], warnings
+
+
+_RANKING_ROW_RE = re.compile(
+    r'RankingTable__rank__2fAZ">(?P<rank>\d+)</th>.*?href="https://finance\.yahoo\.co\.jp/quote/'
+    r'(?P<ticker>[0-9A-Za-z]+\.T)"[^>]*>(?P<name>[^<]+)</a>',
+    re.S,
+)
+
+
+def _fetch_ranking_page(page: int) -> list[dict]:
+    """Yahoo Finance's 掲示板投稿数ランキング (BBS post-count ranking) - the
+    only ranking view checked (2026-08-20) with a stable, single-table
+    markup; the general /stocks/ top page mixes several differently-marked-up
+    ranking widgets and was skipped as too fragile to parse reliably."""
+    params = urllib.parse.urlencode({"market": "all", "term": "daily", "page": page})
+    url = f"{YAHOO_RANKING_URL}?{params}"
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        body = response.read().decode("utf-8", errors="replace")
+
+    results = []
+    for match in _RANKING_ROW_RE.finditer(body):
+        ticker = match.group("ticker").strip()
+        name = html.unescape(match.group("name")).strip()
+        if ticker:
+            results.append({"ticker": ticker, "name": name, "rank": int(match.group("rank"))})
+    return results
+
+
+def _load_stock_seen_log(root: Path) -> dict[str, str]:
+    path = root / STOCK_SEEN_LOG_PATH
+    if not path.exists():
+        return {}
+    data = _load_json(path)
+    return data if isinstance(data, dict) else {}
+
+
+def _save_stock_seen_log(root: Path, seen: dict[str, str]) -> None:
+    path = root / STOCK_SEEN_LOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cutoff_label = (datetime.now(JST) - timedelta(days=STOCK_SEEN_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
+    trimmed = {ticker: date for ticker, date in seen.items() if date >= cutoff_label}
+    path.write_text(json.dumps(trimmed, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _collect_new_ranking_tickers(root: Path) -> tuple[list[dict], list[str]]:
+    """Returns tickers that entered the BBS post-count ranking for the first
+    time since we started tracking - not just "currently ranked", which
+    would be most of the same names every day. On the very first run ever
+    (no seen-log file yet), today's ranking is used only to seed that log;
+    nothing is reported as "new" this run, per the 2026-08-20 request to
+    skip whatever's already on the board today and only react to tickers
+    that show up from tomorrow onward."""
+    warnings = []
+    all_entries: list[dict] = []
+    for page in YAHOO_RANKING_PAGES:
+        try:
+            all_entries.extend(_fetch_ranking_page(page))
+        except Exception as exc:
+            warnings.append(f"ranking page {page}: {exc}")
+            logging.error("[note_article_ideas] ranking fetch failed for page %d: %s", page, exc)
+
+    seen = _load_stock_seen_log(root)
+    is_bootstrap = not seen
+    today_label = datetime.now(JST).strftime("%Y-%m-%d")
+
+    new_tickers = []
+    seen_this_run = set()
+    for entry in all_entries:
+        ticker = entry["ticker"]
+        if ticker in seen_this_run:
+            continue
+        seen_this_run.add(ticker)
+        if not is_bootstrap and ticker not in seen:
+            new_tickers.append(entry)
+        seen[ticker] = today_label
+
+    _save_stock_seen_log(root, seen)
+    return new_tickers, warnings
 
 
 def _own_article_titles(root: Path) -> list[str]:
@@ -215,7 +300,9 @@ def _is_duplicate(title: str, avoid_titles: list[str], threshold: float) -> tupl
     return False, None
 
 
-def _build_prompt(trend_seeds: list[dict], avoid_titles: list[str], candidate_count: int) -> str:
+def _build_prompt(
+    trend_seeds: list[dict], new_tickers: list[dict], avoid_titles: list[str], candidate_count: int
+) -> str:
     seeds_text = "\n".join(
         f"- 「{seed['title']}」(いいね{seed['like_count']}, 検索語:{seed['query']})" for seed in trend_seeds
     ) or "(取得できた参考記事なし)"
@@ -223,6 +310,18 @@ def _build_prompt(trend_seeds: list[dict], avoid_titles: list[str], candidate_co
     # to reliably avoid near-duplicates, not the full corpus verbatim.
     avoid_text = "\n".join(f"- {title}" for title in avoid_titles[:250]) or "(なし)"
     categories_text = "\n".join(f"- {c}" for c in CATEGORIES)
+    ticker_text = "\n".join(
+        f"- {t['name']}({t['ticker'].replace('.T', '')}) 投稿数ランキング{t['rank']}位に新規登場"
+        for t in new_tickers
+    )
+    ticker_block = (
+        f"""
+Yahoo!ファイナンス掲示板の投稿数ランキングに新しく入ってきた銘柄(個別レビュー記事の題材候補、無理に使わなくてよい):
+{ticker_text}
+"""
+        if new_tickers
+        else ""
+    )
 
     return f"""
 あなたは「高配当株投資・FIRE」をテーマにしたnoteクリエイターの構想アシスタントです。
@@ -231,7 +330,7 @@ def _build_prompt(trend_seeds: list[dict], avoid_titles: list[str], candidate_co
 
 参考(note.com「投資」トピックで今伸びている記事。真似ではなく、切り口のヒントとして使う):
 {seeds_text}
-
+{ticker_block}
 このアカウントの記事カテゴリ(いずれかに寄せる):
 {categories_text}
 
@@ -282,13 +381,15 @@ def run(root: Path) -> None:
     model = str(config.get("model") or DEFAULT_MODEL)
 
     trend_seeds, fetch_warnings = _collect_trend_seeds(queries, seed_count)
+    new_tickers, ranking_warnings = _collect_new_ranking_tickers(root)
+    fetch_warnings += ranking_warnings
 
     own_titles = _own_article_titles(root)
     ideas_log = _load_ideas_log(root)
     proposed_titles = [r.get("title", "") for r in ideas_log]
     avoid_titles = own_titles + proposed_titles
 
-    prompt = _build_prompt(trend_seeds, avoid_titles, candidate_count)
+    prompt = _build_prompt(trend_seeds, new_tickers, avoid_titles, candidate_count)
     usage_tracker = GeminiUsageTracker(model)
 
     try:
@@ -350,6 +451,7 @@ def run(root: Path) -> None:
         "model": model,
         "cost_jpy": round(usage_tracker.cost_jpy, 2),
         "trend_seeds": trend_seeds,
+        "new_ranking_tickers": new_tickers,
         "candidate_count": len(candidates),
         "dropped_as_duplicate": dropped,
         "ideas": ideas,

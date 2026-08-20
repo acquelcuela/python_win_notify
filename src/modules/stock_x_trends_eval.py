@@ -19,6 +19,11 @@ _EXPECTED_DIRECTION = {
     "negative": "down",
 }
 
+# A move under this magnitude is treated as noise, not a real hit - e.g.
+# +0.1% on an "up" call isn't meaningfully different from flat, so counting
+# it as a hit overstates the signal. Symmetric for "down" calls.
+HIT_MIN_MAGNITUDE_PCT = 0.5
+
 PREDICTIONS_LOG_PATH = Path("state") / "stock_x_trends_predictions.json"
 PREDICTION_LOG_RETENTION_DAYS = 90
 HISTORY_DIR_NAME = "history"
@@ -180,7 +185,13 @@ def run(root: Path) -> None:
         change_pct = _fetch_today_change_pct(ticker, today_date)
         if change_pct is None:
             continue
-        actual = "up" if change_pct > 0 else "down"
+        if expected == "up":
+            hit = change_pct > HIT_MIN_MAGNITUDE_PCT
+        elif expected == "down":
+            hit = change_pct < -HIT_MIN_MAGNITUDE_PCT
+        else:
+            # neutral findings still show the actual move but no verdict.
+            hit = None
         results.append(
             {
                 "ticker": ticker,
@@ -189,9 +200,7 @@ def run(root: Path) -> None:
                 "reason": finding.get("reason"),
                 "actual_change_pct": round(change_pct, 2),
                 "expected_direction": expected,
-                # hit is only meaningful for positive/negative findings;
-                # neutral findings still show the actual move but no verdict.
-                "hit": (actual == expected) if expected else None,
+                "hit": hit,
             }
         )
 

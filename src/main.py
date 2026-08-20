@@ -46,7 +46,7 @@ MODULE_ORDER = [
     "marketplace_watch",
     "marketplace_watch_mail",
     "note_article_ideas",
-    "note_article_ideas_mail",
+    "note_article_ideas_export",
     "onedrive_check",
     "report_html",
     "mail_gmail",
