@@ -29,7 +29,8 @@
     },
     {"time": "23:45", "days": "all", "modules": ["onedrive_check"]},
     {"time": "00:30", "days": "all", "modules": ["keyword_watch", "keyword_watch_mail"]},
-    {"time": "21:00", "days": "all", "modules": ["marketplace_watch", "marketplace_watch_mail"]}
+    {"time": "21:00", "days": "all", "modules": ["marketplace_watch", "marketplace_watch_mail"]},
+    {"time": "08:00", "days": "all", "modules": ["note_article_ideas", "note_article_ideas_mail"]}
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,
@@ -53,6 +54,8 @@
     "keyword_watch_mail": true,
     "marketplace_watch": true,
     "marketplace_watch_mail": true,
+    "note_article_ideas": true,
+    "note_article_ideas_mail": true,
     "onedrive_check": true,
     "report_html": true,
     "mail_gmail": true
