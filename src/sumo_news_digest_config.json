@@ -1,0 +1,5 @@
+{
+  "digest_days": [10, 20, 30],
+  "lookback_days": 10,
+  "model": "gemini-3.1-flash-lite"
+}

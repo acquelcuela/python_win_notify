@@ -1,11 +1,11 @@
 {
   "batch_schedule": [
+    {"time": "05:00", "days": "all", "modules": ["post_x_magazine"]},
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
       "time": "07:00",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
-    {"time": "07:45", "days": "all", "modules": ["post_x_magazine"]},
     {
       "time": "09:30",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
@@ -14,23 +14,25 @@
       "time": "12:15",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
     },
-    {"time": "12:00", "days": "all", "modules": ["sumo_news", "sumo_news_mail"]},
-    {"time": "12:30", "days": "all", "modules": ["post_x_magazine"]},
     {
       "time": "17:30",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
-    {"time": "22:00", "days": "all", "modules": ["post_x_magazine"]},
-    {"time": "22:30", "days": "all", "modules": ["sumo_news", "sumo_news_mail"]},
+    {
+      "time": "22:00",
+      "days": "all",
+      "modules": [
+        "sumo_news", "sumo_news_mail", "sumo_news_digest",
+        "keyword_watch", "keyword_watch_mail",
+        "marketplace_watch", "marketplace_watch_mail",
+        "note_article_ideas", "note_article_ideas_export",
+        "onedrive_check"
+      ]
+    },
     {
       "time": "23:00",
-      "days": "all",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
-    },
-    {"time": "23:45", "days": "all", "modules": ["onedrive_check"]},
-    {"time": "00:30", "days": "all", "modules": ["keyword_watch", "keyword_watch_mail"]},
-    {"time": "21:00", "days": "all", "modules": ["marketplace_watch", "marketplace_watch_mail"]},
-    {"time": "08:00", "days": "all", "modules": ["note_article_ideas", "note_article_ideas_export"]}
+    }
   ],
   "batch_window_minutes": 14,
   "batch_weekdays_only": true,
@@ -50,6 +52,7 @@
     "stock_range_eval": true,
     "sumo_news": true,
     "sumo_news_mail": true,
+    "sumo_news_digest": true,
     "keyword_watch": true,
     "keyword_watch_mail": true,
     "marketplace_watch": true,

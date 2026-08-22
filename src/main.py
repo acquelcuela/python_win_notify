@@ -41,6 +41,7 @@ MODULE_ORDER = [
     "stock_range_eval",
     "sumo_news",
     "sumo_news_mail",
+    "sumo_news_digest",
     "keyword_watch",
     "keyword_watch_mail",
     "marketplace_watch",

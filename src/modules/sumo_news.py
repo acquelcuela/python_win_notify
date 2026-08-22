@@ -15,6 +15,33 @@ DEFAULT_QUERIES = [
     "大相撲 番付",
 ]
 
+HISTORY_DIR_NAME = "history"
+HISTORY_RETENTION_DAYS = 40
+
+
+def _archive_history(root: Path, payload: dict) -> None:
+    """Daily snapshot archive so sumo_news_digest can look back over the
+    past ~10 days without needing its own separate fetch - mirrors
+    stock_x_trends's own history archive."""
+    history_dir = root / "output" / HISTORY_DIR_NAME
+    history_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = payload.get("generated_at") or datetime.now(JST).isoformat()
+    try:
+        date_label = datetime.fromisoformat(str(generated_at)).astimezone(JST).strftime("%Y%m%d")
+    except (TypeError, ValueError):
+        date_label = datetime.now(JST).strftime("%Y%m%d")
+    history_path = history_dir / f"sumo_news_{date_label}.json"
+    history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    cutoff = datetime.now(JST) - timedelta(days=HISTORY_RETENTION_DAYS)
+    for existing in history_dir.glob("sumo_news_*.json"):
+        try:
+            file_date = datetime.strptime(existing.stem.split("_")[-1], "%Y%m%d").replace(tzinfo=JST)
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            existing.unlink(missing_ok=True)
+
 
 def _normalized_story_key(item: dict) -> str:
     """Google News RSS syndicates the same story from many outlets, each
@@ -156,6 +183,8 @@ def run(root: Path) -> None:
         logging.info("[sumo_news] no recent news items")
 
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if payload.get("status") == "ok":
+        _archive_history(root, payload)
 
 
 if __name__ == "__main__":
