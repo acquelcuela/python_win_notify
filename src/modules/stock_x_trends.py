@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -351,6 +352,15 @@ def _build_name_lookup(root: Path, config: dict) -> tuple[dict[str, str], dict[s
     return names_by_code, aliases_by_ticker
 
 
+def _normalize_name_for_match(text: str) -> str:
+    """Collapses full-width/half-width and case differences before name
+    comparison - e.g. official "ＩＨＩ" vs a finding's "IHI", or "ソフト９９"
+    vs "ソフト99", are the same name and shouldn't need a one-off alias
+    entry each time this width/case variant shows up (2026-08-25: this
+    pattern accounted for 2 of 5 "unresolved" findings in a single week)."""
+    return unicodedata.normalize("NFKC", text).strip().lower()
+
+
 def _verify_findings(root: Path, data: dict) -> dict:
     names_by_code, aliases_by_ticker = _build_name_lookup(root, _load_config(root))
     if not names_by_code:
@@ -365,7 +375,15 @@ def _verify_findings(root: Path, data: dict) -> dict:
         official_name = names_by_code.get(code)
         aliases = aliases_by_ticker.get(f"{code}.T", [])
         known_names = {official_name} | set(aliases) if official_name else set(aliases)
-        resolved = bool(official_name) and (not name or name in known_names or official_name in name or name in official_name)
+        normalized_name = _normalize_name_for_match(name) if name else ""
+        normalized_known = {_normalize_name_for_match(n) for n in known_names if n}
+        normalized_official = _normalize_name_for_match(official_name) if official_name else ""
+        resolved = bool(official_name) and (
+            not name
+            or normalized_name in normalized_known
+            or normalized_official in normalized_name
+            or normalized_name in normalized_official
+        )
         finding["verified"] = resolved
         if not resolved:
             unresolved.append(f"{code}({name or '-'})")

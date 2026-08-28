@@ -1,6 +1,7 @@
 {
   "keywords": [
-    {"keyword": "HUAWEI WATCH D2", "target_price": 35000}
+    {"keyword": "HUAWEI WATCH D2", "target_price": 35000},
+    {"keyword": "Redmi 15 5G 8GB 256GB", "target_price": 25000}
   ],
   "max_items": 30
 }

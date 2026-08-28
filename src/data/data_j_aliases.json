@@ -179,6 +179,18 @@
     {
       "ticker": "9687.T",
       "aliases": ["KSK"]
+    },
+    {
+      "ticker": "9552.T",
+      "aliases": ["クオンツ総研HD"]
+    },
+    {
+      "ticker": "6085.T",
+      "aliases": ["アーキテクツＳＪ", "アーキテクツSJ"]
+    },
+    {
+      "ticker": "4170.T",
+      "aliases": ["KaizenPF", "Kaizen PF"]
     }
   ]
 }
