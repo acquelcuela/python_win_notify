@@ -23,6 +23,7 @@
       "days": "all",
       "modules": [
         "sumo_news", "sumo_news_mail", "sumo_news_digest",
+        "oricon_album", "oricon_album_mail",
         "keyword_watch", "keyword_watch_mail",
         "marketplace_watch", "marketplace_watch_mail",
         "note_article_ideas", "note_article_ideas_export",
@@ -53,6 +54,8 @@
     "sumo_news": true,
     "sumo_news_mail": true,
     "sumo_news_digest": true,
+    "oricon_album": true,
+    "oricon_album_mail": true,
     "keyword_watch": true,
     "keyword_watch_mail": true,
     "marketplace_watch": true,

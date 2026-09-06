@@ -42,6 +42,8 @@ MODULE_ORDER = [
     "sumo_news",
     "sumo_news_mail",
     "sumo_news_digest",
+    "oricon_album",
+    "oricon_album_mail",
     "keyword_watch",
     "keyword_watch_mail",
     "marketplace_watch",
