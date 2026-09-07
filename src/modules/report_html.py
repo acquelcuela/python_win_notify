@@ -330,6 +330,27 @@ def _index_range_card(item: dict) -> str:
     change_text, change_color = _fmt_change(item.get("change"), item.get("change_pct", 0))
     position_pct = range_info.get("position_pct")
     position_pct_clamped = max(0.0, min(100.0, float(position_pct))) if position_pct is not None else 0.0
+    daily_rows = []
+    for day in (item.get("daily_changes") or [])[:10]:
+        day_text, day_color = _fmt_change(day.get("change"), day.get("change_pct", 0))
+        daily_rows.append(
+            f"""
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-top:2px;">
+              <span>{html.escape(day.get("label", ""))}</span>
+              <strong style="color:{day_color};">{day_text}</strong>
+            </div>
+            """
+        )
+    daily_changes_block = (
+        f"""
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e5e7eb;">
+          <div class="muted" style="margin-bottom:2px;">直近10営業日の増減</div>
+          {''.join(daily_rows)}
+        </div>
+        """
+        if daily_rows
+        else ""
+    )
     return f"""
     <div class="news-hit-card">
       <div class="news-hit-title">
@@ -343,6 +364,7 @@ def _index_range_card(item: dict) -> str:
         <div style="background:#2563eb;border-radius:4px;height:8px;width:{position_pct_clamped}%;"></div>
       </div>
       <div class="muted">30日レンジの{html.escape(str(position_pct))}%地点</div>
+      {daily_changes_block}
     </div>
     """
 

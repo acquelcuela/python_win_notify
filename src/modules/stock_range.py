@@ -8,7 +8,7 @@ from pathlib import Path
 import yfinance as yf
 
 from modules.stock_nikkei import _fetch_nikkei_futures_data
-from modules.stock_watchlist import _range_position
+from modules.stock_watchlist import _daily_changes, _range_position
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -342,6 +342,7 @@ def _fetch_index_range_items() -> list[dict]:
                     "change": round(change, 2),
                     "change_pct": round(change_pct, 2),
                     "range_30d": _range_position(hist),
+                    "daily_changes": _daily_changes(hist),
                 }
             )
         except Exception as exc:

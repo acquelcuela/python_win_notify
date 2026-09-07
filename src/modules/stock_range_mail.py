@@ -115,6 +115,25 @@ def _range_card(item: dict) -> str:
     if distance_from_low_pct is not None and distance_from_high_pct is not None:
         distance_text = f"安値比: +{distance_from_low_pct:.2f}% / 高値比: {distance_from_high_pct:.2f}%"
     trend_text, trend_color = _trend_text(range_info)
+    daily_changes_html = "".join(
+        f"""
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-top:2px;">
+          <span>{html.escape(day.get("label", ""))}</span>
+          <strong style="color:{_fmt_change(day.get("change"), day.get("change_pct", 0))[1]};">{_fmt_change(day.get("change"), day.get("change_pct", 0))[0]}</strong>
+        </div>
+        """
+        for day in item.get("daily_changes") or []
+    )
+    daily_changes_block = (
+        f"""
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid #e5e7eb;">
+          <div style="color:#6b7280;font-size:11px;margin-bottom:2px;">直近10営業日の増減</div>
+          {daily_changes_html}
+        </div>
+        """
+        if daily_changes_html
+        else ""
+    )
     return f"""
     <div style="margin-top:10px;padding:10px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
       <div style="margin-bottom:4px;">
@@ -130,6 +149,7 @@ def _range_card(item: dict) -> str:
       </div>
       <div style="color:#6b7280;font-size:12px;">現在位置: レンジの{html.escape(str(position_pct))}%地点（{position_label}） / {html.escape(distance_text)}</div>
       <div style="color:{trend_color};font-size:12px;font-weight:bold;">{html.escape(trend_text)}</div>
+      {daily_changes_block}
       {_x_trend_note(item)}
     </div>
     """

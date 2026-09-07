@@ -112,22 +112,12 @@ def _range_position(hist) -> dict:
     }
 
 
-def _fetch_target(target: dict) -> dict:
-    ticker_symbol = target["ticker"]
-    ticker = yf.Ticker(ticker_symbol)
-    hist = ticker.history(period="30d", interval="1d", auto_adjust=False)
-    hist = hist.dropna(subset=["Close"])
-    if len(hist) < 2:
-        raise ValueError(f"Not enough price data returned for {ticker_symbol}.")
-
-    latest = hist.iloc[-1]
-    previous = hist.iloc[-2]
-    close = float(latest["Close"])
-    prev_close = float(previous["Close"])
-    change = close - prev_close
-    change_pct = (change / prev_close * 100) if prev_close else 0.0
+def _daily_changes(hist, days: int = 10) -> list[dict]:
+    """Day-over-day change for each of the last `days` trading days, newest
+    first - shared by individual stocks and the index cards so both render
+    the same "recent daily moves" strip."""
     daily_changes = []
-    closes = hist["Close"].tail(11)
+    closes = hist["Close"].tail(days + 1)
     for idx in range(len(closes) - 1, 0, -1):
         current = float(closes.iloc[idx])
         previous_close = float(closes.iloc[idx - 1])
@@ -142,6 +132,24 @@ def _fetch_target(target: dict) -> dict:
                 "change_pct": round(delta_pct, 2),
             }
         )
+    return daily_changes
+
+
+def _fetch_target(target: dict) -> dict:
+    ticker_symbol = target["ticker"]
+    ticker = yf.Ticker(ticker_symbol)
+    hist = ticker.history(period="30d", interval="1d", auto_adjust=False)
+    hist = hist.dropna(subset=["Close"])
+    if len(hist) < 2:
+        raise ValueError(f"Not enough price data returned for {ticker_symbol}.")
+
+    latest = hist.iloc[-1]
+    previous = hist.iloc[-2]
+    close = float(latest["Close"])
+    prev_close = float(previous["Close"])
+    change = close - prev_close
+    change_pct = (change / prev_close * 100) if prev_close else 0.0
+    daily_changes = _daily_changes(hist)
 
     info = {}
     try:
