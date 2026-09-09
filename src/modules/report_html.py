@@ -404,12 +404,28 @@ def _stock_range_score_section(root: Path) -> str:
     """
 
 
-def _stock_range_eval_result_cards(results: list[dict]) -> str:
+def _verdict_label(hit: bool | None, stage: str, miss_label: str = "不発") -> tuple[str, str]:
+    if hit is None:
+        return "-", "#6b7280"
+    if stage == "interim":
+        return ("現在的中", "#047857") if hit else (f"現在{miss_label}", "#b91c1c")
+    return ("的中", "#047857") if hit else (miss_label, "#b91c1c")
+
+
+def _flip_note(r: dict, stage: str) -> str:
+    if stage != "final" or not r.get("flipped"):
+        return ""
+    previous_text, _ = _verdict_label(r.get("previous_hit"), "final")
+    current_text, _ = _verdict_label(r.get("hit"), "final")
+    return f'<div style="font-size:11px;color:#b45309;margin-top:2px;">昼時点から変化: {previous_text}→{current_text}</div>'
+
+
+def _stock_range_eval_result_cards(results: list[dict], stage: str) -> str:
     if not results:
         return '<div class="muted">該当銘柄なし</div>'
     cards = []
     for r in results:
-        verdict_text, verdict_color = ("的中", "#047857") if r.get("hit") else ("不発", "#b91c1c")
+        verdict_text, verdict_color = _verdict_label(r.get("hit"), stage)
         actual_pct = r.get("actual_change_pct")
         actual_text = f"{actual_pct:+.2f}%" if actual_pct is not None else "-"
         reasons = " / ".join(r.get("reasons") or [])
@@ -422,6 +438,7 @@ def _stock_range_eval_result_cards(results: list[dict]) -> str:
                 <span style="float:right;font-weight:bold;color:{verdict_color};">{verdict_text}</span>
               </div>
               <div class="muted" style="clear:both;">スコア{r.get("score")}点 / 本日{actual_text} / {html.escape(reasons)}</div>
+              {_flip_note(r, stage)}
             </div>
             """
         )
@@ -441,6 +458,7 @@ def _stock_range_eval_section(root: Path) -> str:
     except (TypeError, ValueError):
         return ""
 
+    stage = payload.get("stage", "final")
     results = payload.get("results") or []
     momentum = [r for r in results if r.get("type") == "momentum"]
     reversal = [r for r in results if r.get("type") == "reversal"]
@@ -448,22 +466,29 @@ def _stock_range_eval_section(root: Path) -> str:
     evaluated_count = payload.get("evaluated_count", len(results))
     skipped_count = payload.get("skipped_count", 0)
     skipped_note = (
-        f'<div class="muted">{skipped_count}件は本日終値が未取得のため未評価です(米国株など)。</div>'
+        f'<div class="muted">{skipped_count}件は現時点の価格が未取得のため未評価です(米国株など)。</div>'
         if skipped_count
         else ""
     )
+    title = "30日レンジ 昼時点の中間結果" if stage == "interim" else "30日レンジ 本日の的中結果"
+    stage_note = (
+        "(12:15時点・場中の暫定値です。取引終了後に最終結果へ更新されます)"
+        if stage == "interim"
+        else "(取引終了後の最終結果です。昼時点から結果が変わった銘柄は変化を表示しています)"
+    )
+    summary_label = f"昼時点 {hit_count}/{evaluated_count} 的中" if stage == "interim" else f"本日 {hit_count}/{evaluated_count} 的中"
 
     return f"""
     <section class="panel">
-      <div class="section-title">30日レンジ 本日の的中結果</div>
-      <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・夜21:00に算出)</div>
+      <div class="section-title">{title}</div>
+      <div class="muted">算出時刻: {_generated_at_label(payload)} {stage_note}</div>
       <div class="muted">今朝の30日レンジ候補が、本日の値動きでプラスになったかを評価しています。</div>
-      <div style="margin-top:8px;font-weight:bold;">本日 {hit_count}/{evaluated_count} 的中</div>
+      <div style="margin-top:8px;font-weight:bold;">{summary_label}</div>
       {skipped_note}
       <h3>モメンタム型</h3>
-      {_stock_range_eval_result_cards(momentum)}
+      {_stock_range_eval_result_cards(momentum, stage)}
       <h3>リバーサル型</h3>
-      {_stock_range_eval_result_cards(reversal)}
+      {_stock_range_eval_result_cards(reversal, stage)}
     </section>
     """
 
@@ -765,6 +790,7 @@ def _stock_x_trends_section(root: Path) -> str:
     )
 
     eval_by_ticker = {}
+    eval_stage = "final"
     eval_payload = _load_json(root / "output" / "stock_x_trends_eval.json")
     # Only attach verdicts if this evaluation actually judged the exact
     # stock_x_trends.json generation being displayed here - otherwise (e.g.
@@ -776,6 +802,7 @@ def _stock_x_trends_section(root: Path) -> str:
         and eval_payload.get("status") == "ok"
         and eval_payload.get("trends_generated_at") == payload.get("generated_at")
     ):
+        eval_stage = eval_payload.get("stage", "final")
         for r in eval_payload.get("results") or []:
             ticker = str(r.get("ticker") or "").strip()
             if ticker:
@@ -798,13 +825,12 @@ def _stock_x_trends_section(root: Path) -> str:
             actual_pct = eval_result.get("actual_change_pct")
             hit = eval_result.get("hit")
             actual_text = f"{actual_pct:+.2f}%" if actual_pct is not None else "-"
-            if hit is True:
-                verdict_text, verdict_color = "的中", "#047857"
-            elif hit is False:
-                verdict_text, verdict_color = "外れ", "#b91c1c"
-            else:
-                verdict_text, verdict_color = "-", "#6b7280"
-            verdict_html = f'<div style="font-weight:bold;color:{verdict_color};">答え合わせ: {verdict_text}(本日{actual_text})</div>'
+            verdict_text, verdict_color = _verdict_label(hit, eval_stage, miss_label="外れ")
+            flip_note = ""
+            if eval_stage == "final" and eval_result.get("flipped"):
+                previous_text, _ = _verdict_label(eval_result.get("previous_hit"), "final", miss_label="外れ")
+                flip_note = f'<div style="font-size:11px;color:#b45309;margin-top:2px;">昼時点から変化: {previous_text}→{verdict_text}</div>'
+            verdict_html = f'<div style="font-weight:bold;color:{verdict_color};">答え合わせ: {verdict_text}(本日{actual_text})</div>{flip_note}'
         finding_cells.append(
             f"""
             <td class="stock-grid-cell">
@@ -840,6 +866,100 @@ def _stock_x_trends_section(root: Path) -> str:
     """
 
 
+def _rating_news_card(item: dict) -> str:
+    title = html.escape(item.get("title") or "-")
+    url = item.get("url") or ""
+    source = html.escape(item.get("source") or "")
+    published_at = item.get("published_at")
+    time_text = "-"
+    if published_at:
+        try:
+            dt = datetime.fromisoformat(published_at)
+            time_text = dt.astimezone(JST).strftime("%m/%d %H:%M")
+        except ValueError:
+            pass
+    link = f'<a href="{html.escape(url)}" target="_blank" rel="noopener">{title}</a>' if url else title
+    return f"""
+    <div style="margin-top:6px;padding:6px 8px;background:#f8fafc;border-radius:6px;font-size:12px;">
+      {link}
+      <div class="muted" style="margin-top:2px;">{source} / {time_text}</div>
+    </div>
+    """
+
+
+def _stock_ratings_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "stock_ratings.json")
+    if not payload or payload.get("status") != "ok":
+        return ""
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        if generated_at.astimezone(JST).date() != datetime.now(JST).date():
+            return ""
+    except (TypeError, ValueError):
+        return ""
+
+    data = payload.get("data") or []
+    if not data:
+        return ""
+
+    cards = []
+    for entry in data:
+        items_html = "".join(_rating_news_card(item) for item in entry.get("items") or [])
+        cards.append(
+            f"""
+            <div class="news-hit-card">
+              <div class="news-hit-title"><strong>{html.escape(entry.get("name", ""))}</strong> <span class="muted">{_yahoo_finance_link(entry.get("ticker", "-"))}</span></div>
+              {items_html}
+            </div>
+            """
+        )
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">レーティング・目標株価の関連ニュース</div>
+      <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝算出し、終日この結果を表示します)</div>
+      {"".join(cards)}
+    </section>
+    """
+
+
+def _nikkei_constituents_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "nikkei_constituents.json")
+    if not payload:
+        return ""
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        if generated_at.astimezone(JST).date() != datetime.now(JST).date():
+            return ""
+    except (TypeError, ValueError):
+        return ""
+
+    items = payload.get("data") or [] if payload.get("status") == "ok" else []
+    if items:
+        cards = "".join(
+            f"""
+            <div class="news-hit-card">
+              <div class="muted">{html.escape(item.get("date", "-"))}</div>
+              <div class="news-hit-title"><a href="{html.escape(item.get("url", ""))}" target="_blank" rel="noopener"><strong>{html.escape(item.get("title", "-"))}</strong></a></div>
+            </div>
+            """
+            for item in items
+        )
+    else:
+        cards = '<div class="muted">なかった</div>'
+
+    return f"""
+    <section class="panel">
+      <div class="section-title">日経平均 構成銘柄関連の新着発表</div>
+      {cards}
+    </section>
+    """
+
+
 def _gemini_cost_footer(root: Path) -> str:
     payload = _load_json(root / "output" / "ai_summary.json")
     if not payload or payload.get("status") != "ok":
@@ -868,9 +988,11 @@ def run(root: Path) -> None:
         + _stock_range_eval_section(root)
         + _stock_range_score_section(root)
         + _watchlist_section(root)
+        + _stock_ratings_section(root)
         + _dividend_section(root)
         + _stock_x_trends_section(root)
         + _gemini_cost_footer(root)
+        + _nikkei_constituents_section(root)
     )
     document = f"""<!doctype html>
 <html lang="ja">

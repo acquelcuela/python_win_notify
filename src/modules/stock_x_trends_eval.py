@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 
 import yfinance as yf
 
 
 JST = timezone(timedelta(hours=9), "JST")
+
+# Before Tokyo's 15:00 close the read is partial-day/intraday, so it's
+# treated as a non-final "interim" verdict - the log (used for long-term
+# accuracy tracking) is only updated from the after-close "final" run, so a
+# noon snapshot never gets locked in as the day's official outcome.
+MARKET_CLOSE_TIME = dt_time(15, 0)
 
 # strong_positive/positive findings imply "expect the stock to be up today";
 # negative implies "expect it to be down". neutral has no directional claim
@@ -28,6 +34,15 @@ PREDICTIONS_LOG_PATH = Path("state") / "stock_x_trends_predictions.json"
 PREDICTION_LOG_RETENTION_DAYS = 90
 HISTORY_DIR_NAME = "history"
 HISTORY_RETENTION_DAYS = 30
+
+# Durable record of each day's interim (pre-close) verdicts, keyed by
+# trends_generated_at so the final run can diff against noon's actual
+# result even if output/stock_x_trends_eval.json was overwritten in
+# between (e.g. by a manual re-run) - unlike that output file, this state
+# file is only ever written by the interim stage, never overwritten by a
+# later run.
+INTERIM_STATE_PATH = Path("state") / "stock_x_trends_interim.json"
+INTERIM_STATE_RETENTION_DAYS = 3
 
 
 def _archive_history(root: Path, payload: dict) -> None:
@@ -103,6 +118,43 @@ def _append_predictions_log(root: Path, today_label: str, results: list[dict]) -
     path.write_text(json.dumps(trimmed, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _load_interim_state(root: Path) -> dict:
+    path = root / INTERIM_STATE_PATH
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _save_interim_verdicts(root: Path, now: datetime, trends_generated_at: str | None, results: list[dict]) -> None:
+    if not trends_generated_at:
+        return
+    path = root / INTERIM_STATE_PATH
+    state = _load_interim_state(root)
+    state[trends_generated_at] = {
+        "logged_date": now.strftime("%Y-%m-%d"),
+        "hit_by_ticker": {r["ticker"]: r["hit"] for r in results},
+    }
+    cutoff_label = (now - timedelta(days=INTERIM_STATE_RETENTION_DAYS)).strftime("%Y-%m-%d")
+    trimmed = {
+        key: value
+        for key, value in state.items()
+        if str(value.get("logged_date", "9999-99-99")) >= cutoff_label
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(trimmed, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _load_interim_hit_by_ticker(root: Path, trends_generated_at: str | None) -> dict[str, bool | None]:
+    if not trends_generated_at:
+        return {}
+    entry = _load_interim_state(root).get(trends_generated_at)
+    return entry.get("hit_by_ticker", {}) if entry else {}
+
+
 def _fetch_today_change_pct(ticker_code: str, today_date) -> float | None:
     """Same-day change vs previous close for a bare Japan ticker code (e.g.
     "3103"). Returns None if today's bar isn't available yet (e.g. run
@@ -176,6 +228,15 @@ def run(root: Path) -> None:
         logging.info("[stock_x_trends_eval] skipped: no verified stock findings")
         return
 
+    stage = "interim" if now.time() < MARKET_CLOSE_TIME else "final"
+    trends_generated_at = payload.get("generated_at")
+
+    # Interim verdict per ticker for this same stock_x_trends generation,
+    # used by the final run to detect a flip. Read from the durable interim
+    # state file (not the previous output/stock_x_trends_eval.json), so a
+    # manual re-run in between never clobbers what noon actually judged.
+    previous_hit_by_ticker = _load_interim_hit_by_ticker(root, trends_generated_at)
+
     today_date = now.date()
     results = []
     for finding in findings:
@@ -192,6 +253,8 @@ def run(root: Path) -> None:
         else:
             # neutral findings still show the actual move but no verdict.
             hit = None
+        previous_hit = previous_hit_by_ticker.get(ticker)
+        flipped = hit is not None and previous_hit is not None and previous_hit != hit
         results.append(
             {
                 "ticker": ticker,
@@ -201,6 +264,8 @@ def run(root: Path) -> None:
                 "actual_change_pct": round(change_pct, 2),
                 "expected_direction": expected,
                 "hit": hit,
+                "flipped": flipped,
+                "previous_hit": previous_hit if flipped else None,
             }
         )
 
@@ -216,7 +281,16 @@ def run(root: Path) -> None:
         return
 
     today_label = now.strftime("%Y-%m-%d")
-    _append_predictions_log(root, today_label, results)
+    if stage == "interim":
+        # Durable record of noon's verdicts, so the final run can detect a
+        # flip even if this output file gets overwritten by another manual
+        # run before 15:00.
+        _save_interim_verdicts(root, now, trends_generated_at, results)
+    else:
+        # The long-term accuracy log only ever records the after-close
+        # (final) outcome - an interim noon read must never get locked in
+        # as the day's official result.
+        _append_predictions_log(root, today_label, results)
 
     judged = [r for r in results if r["hit"] is not None]
     hit_count = sum(1 for r in judged if r["hit"])
@@ -224,6 +298,7 @@ def run(root: Path) -> None:
         "module": "stock_x_trends_eval",
         "generated_at": generated_at,
         "status": "ok",
+        "stage": stage,
         # Ties this evaluation to the exact stock_x_trends.json generation it
         # judged, so a later fetch (e.g. the 23:00 reset) that produces a
         # differently-timestamped file is recognizable as not yet evaluated,
@@ -235,7 +310,7 @@ def run(root: Path) -> None:
     }
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     _archive_history(root, result)
-    logging.info("[stock_x_trends_eval] evaluated %d findings (%d hits of %d judged)", len(results), hit_count, len(judged))
+    logging.info("[stock_x_trends_eval] (%s) evaluated %d findings (%d hits of %d judged)", stage, len(results), hit_count, len(judged))
 
 
 if __name__ == "__main__":

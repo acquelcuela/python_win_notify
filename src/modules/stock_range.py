@@ -102,7 +102,12 @@ def _market_adjustment(market_change_pct: float | None, factor: float, cap: floa
 def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[int, list[str]]:
     """Rule-based signal, not a prediction: recent uptrend + strength within
     the 30-day range + same-day positive X buzz. Purely mechanical scoring
-    from data already computed elsewhere - no extra fetches."""
+    from data already computed elsewhere - no extra fetches.
+
+    No "30日レンジ上位" bonus (removed 2026-09-09): a 590-record check found
+    momentum candidates WITH this bonus hit less often than those without it
+    (50% n=337 vs 53% n=131) - being near the 30-day high is, if anything,
+    a mild headwind for continuation, not the tailwind the bonus assumed."""
     range_info = item.get("range_30d") or {}
     score = 0
     reasons: list[str] = []
@@ -116,11 +121,6 @@ def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
             score += bonus
             reasons.append(f"上昇幅+{change_pct:.1f}%")
 
-    position_pct = range_info.get("position_pct")
-    if position_pct is not None and position_pct >= 70:
-        score += 20
-        reasons.append(f"30日レンジ上位({position_pct:.0f}%)")
-
     finding = _x_trend_finding(item, x_trend_hits)
     sentiment = str((finding or {}).get("sentiment") or "").strip()
     bonus = _SENTIMENT_BONUS.get(sentiment)
@@ -128,7 +128,13 @@ def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
         score += bonus
         reasons.append(f"当日Xで{sentiment}に話題")
 
-    adjustment, adjustment_reason = _market_adjustment(market_change_pct, factor=4, cap=30)
+    # factor/cap raised 2026-09-09 (was factor=4, cap=30): the same 590-record
+    # check found the same market-condition split reversal already leaned on,
+    # just milder - momentum hit rate 44% (n=84) when overnight futures were
+    # below -0.5% vs 62% (n=96) at +0.5% or above. Not extreme enough to
+    # warrant reversal's outright veto, but the previous factor barely moved
+    # the score (e.g. a -1.5% morning was only a -6pt penalty).
+    adjustment, adjustment_reason = _market_adjustment(market_change_pct, factor=7, cap=40)
     if adjustment:
         score += adjustment
         reasons.append(adjustment_reason)
@@ -136,9 +142,24 @@ def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
     return max(min(round(score), 100), 0), reasons
 
 
+REVERSAL_SELLOFF_VETO_PCT = -0.5
+
+
 def _reversal_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[int, list[str]]:
     """Rule-based signal, not a prediction: deep in the 30-day low range,
-    no longer actively falling, plus same-day positive X buzz."""
+    no longer actively falling, plus same-day positive X buzz.
+
+    Vetoed outright on a broad-selloff morning (overnight futures below
+    REVERSAL_SELLOFF_VETO_PCT): a 2026-09-09 check of 122 evaluated reversal
+    candidates found the hit rate crashes to 27% (n=11) on such mornings vs
+    53-85% otherwise, matching the earlier 2026-07-28 anecdote (0/9 hits on
+    a sharp selloff morning) - broad market weakness overwhelms the
+    stock-specific "bought too far, due for a bounce" thesis on those days,
+    so a mere score penalty (as momentum still gets via _market_adjustment)
+    isn't enough; the candidate shouldn't be surfaced at all."""
+    if market_change_pct is not None and market_change_pct < REVERSAL_SELLOFF_VETO_PCT:
+        return 0, [f"市場全体{market_change_pct:+.1f}%の下落地合いのため見送り"]
+
     range_info = item.get("range_30d") or {}
     score = 0
     reasons: list[str] = []

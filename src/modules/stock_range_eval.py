@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 
 import yfinance as yf
@@ -14,6 +14,12 @@ JST = timezone(timedelta(hours=9), "JST")
 
 MARKET_FORECAST_LOG_PATH = Path("state") / "market_forecast_accuracy.json"
 FORECAST_LOG_RETENTION_DAYS = 90
+
+# Before Tokyo's 15:00 close, a run only sees partial-day intraday moves, so
+# it's treated as a non-final "interim" read (recorded on the candidate but
+# not marked evaluated - the run after close still re-evaluates it and can
+# see whether the interim verdict flipped by the close).
+MARKET_CLOSE_TIME = dt_time(15, 0)
 
 
 def _load_json(path: Path) -> dict | None:
@@ -134,6 +140,8 @@ def run(root: Path) -> None:
         logging.info("[stock_range_eval] skipped: no unevaluated candidates logged today")
         return
 
+    stage = "interim" if now.time() < MARKET_CLOSE_TIME else "final"
+
     today_date = now.date()
     evaluated = []
     changed = False
@@ -141,10 +149,20 @@ def run(root: Path) -> None:
         change_pct = _fetch_today_change_pct(record.get("ticker"), today_date)
         if change_pct is None:
             continue
-        record["evaluated"] = True
-        record["evaluated_date"] = today_label
-        record["actual_change_pct"] = round(change_pct, 2)
-        record["hit"] = bool(change_pct > 0)
+        hit = bool(change_pct > 0)
+        if stage == "interim":
+            record["interim_hit"] = hit
+            record["interim_change_pct"] = round(change_pct, 2)
+            record["interim_evaluated_at"] = generated_at
+            record["flipped"] = False
+        else:
+            previous_hit = record.get("interim_hit")
+            record["evaluated"] = True
+            record["evaluated_date"] = today_label
+            record["actual_change_pct"] = round(change_pct, 2)
+            record["hit"] = hit
+            record["flipped"] = previous_hit is not None and previous_hit != hit
+            record["previous_hit"] = previous_hit if record["flipped"] else None
         changed = True
         evaluated.append(record)
 
@@ -162,7 +180,13 @@ def run(root: Path) -> None:
         logging.info("[stock_range_eval] skipped: no fresh same-day price data available")
         return
 
-    hit_count = sum(1 for r in evaluated if r.get("hit"))
+    def _result_hit(r: dict) -> bool | None:
+        return r.get("hit") if stage == "final" else r.get("interim_hit")
+
+    def _result_change_pct(r: dict) -> float | None:
+        return r.get("actual_change_pct") if stage == "final" else r.get("interim_change_pct")
+
+    hit_count = sum(1 for r in evaluated if _result_hit(r))
     skipped_count = len(todays_candidates) - len(evaluated)
     results_payload = [
         {
@@ -171,8 +195,10 @@ def run(root: Path) -> None:
             "name": r.get("name"),
             "score": r.get("score"),
             "reasons": r.get("reasons"),
-            "actual_change_pct": r.get("actual_change_pct"),
-            "hit": r.get("hit"),
+            "actual_change_pct": _result_change_pct(r),
+            "hit": _result_hit(r),
+            "flipped": r.get("flipped", False),
+            "previous_hit": r.get("previous_hit"),
         }
         for r in evaluated
     ]
@@ -181,13 +207,14 @@ def run(root: Path) -> None:
         "module": "stock_range_eval",
         "generated_at": generated_at,
         "status": "ok",
+        "stage": stage,
         "evaluated_count": len(evaluated),
         "hit_count": hit_count,
         "skipped_count": skipped_count,
         "results": results_payload,
     }
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    logging.info("[stock_range_eval] evaluated %d candidates (%d hits)", len(evaluated), hit_count)
+    logging.info("[stock_range_eval] (%s) evaluated %d candidates (%d hits)", stage, len(evaluated), hit_count)
 
 
 if __name__ == "__main__":

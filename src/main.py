@@ -30,6 +30,7 @@ MODULE_ORDER = [
     "stock_watchlist",
     "stock_sector",
     "stock_dividend",
+    "stock_ratings",
     "market_news",
     "news_movers",
     "stock_x_trends",
@@ -51,6 +52,7 @@ MODULE_ORDER = [
     "note_article_ideas",
     "note_article_ideas_export",
     "onedrive_check",
+    "nikkei_constituents",
     "report_html",
     "mail_gmail",
 ]

@@ -4,7 +4,7 @@
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
       "time": "07:00",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "stock_ratings", "nikkei_constituents", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "09:30",
@@ -12,7 +12,7 @@
     },
     {
       "time": "12:15",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "17:30",
@@ -42,6 +42,7 @@
     "stock_watchlist": true,
     "stock_sector": false,
     "stock_dividend": true,
+    "stock_ratings": true,
     "market_news": true,
     "news_movers": true,
     "stock_x_trends": true,
@@ -63,6 +64,7 @@
     "note_article_ideas": true,
     "note_article_ideas_export": true,
     "onedrive_check": true,
+    "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true
   },
@@ -312,20 +314,12 @@
         "name": "住友電気工業"
       },
       {
-        "ticker": "7267.T",
-        "name": "ホンダ"
-      },
-      {
         "ticker": "4527.T",
         "name": "ロート製薬"
       },
       {
         "ticker": "3103.T",
         "name": "ユニチカ"
-      },
-      {
-        "ticker": "3110.T",
-        "name": "日東紡"
       },
       {
         "ticker": "8001.T",
@@ -352,10 +346,6 @@
         "name": "MS&AD"
       },
       {
-        "ticker": "7272.T",
-        "name": "ヤマハ発動機"
-      },
-      {
         "ticker": "4206.T",
         "name": "アイカ工業"
       },
@@ -378,10 +368,6 @@
       {
         "ticker": "3905.T",
         "name": "データセクション"
-      },
-      {
-        "ticker": "3436.T",
-        "name": "SUMCO"
       }
     ]
   },
