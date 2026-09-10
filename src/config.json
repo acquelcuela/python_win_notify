@@ -4,7 +4,7 @@
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
       "time": "07:00",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "stock_ratings", "nikkei_constituents", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "stock_ratings", "stock_turnover_watch", "nikkei_constituents", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "09:30",
@@ -43,6 +43,7 @@
     "stock_sector": false,
     "stock_dividend": true,
     "stock_ratings": true,
+    "stock_turnover_watch": true,
     "market_news": true,
     "news_movers": true,
     "stock_x_trends": true,
@@ -76,6 +77,10 @@
     "enabled": true,
     "model": "grok-4.3",
     "max_tokens": 1000
+  },
+  "stock_turnover_watch": {
+    "top_n": 40,
+    "min_change_pct": 3.0
   },
   "market_news": {
     "sources": [

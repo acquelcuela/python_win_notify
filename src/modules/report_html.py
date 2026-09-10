@@ -925,6 +925,54 @@ def _stock_ratings_section(root: Path) -> str:
     """
 
 
+def _turnover_watch_card(item: dict) -> str:
+    change_pct = item.get("change_pct")
+    change_color = "#047857" if (change_pct or 0) >= 0 else "#b91c1c"
+    change_text = f'{item.get("change", "-")} ({change_pct:+.2f}%)' if change_pct is not None else "-"
+    trading_value = item.get("trading_value")
+    trading_value_text = f"{int(trading_value):,}万円" if trading_value and str(trading_value).isdigit() else "-"
+    return f"""
+    <div class="news-hit-card">
+      <div class="news-hit-title">
+        <strong>{html.escape(item.get("name", ""))}</strong>
+        <span class="muted">{_yahoo_finance_link(item.get("ticker", "-"))} / {html.escape(item.get("market", "-"))}</span>
+      </div>
+      <div style="color:{change_color};font-weight:bold;">{html.escape(item.get("price", "-"))}円 {change_text}</div>
+      <div class="muted">売買代金 {trading_value_text}</div>
+    </div>
+    """
+
+
+def _stock_turnover_watch_section(root: Path) -> str:
+    payload = _load_json(root / "output" / "stock_turnover_watch.json")
+    if not payload or payload.get("status") != "ok":
+        return ""
+    try:
+        generated_at = datetime.fromisoformat(str(payload.get("generated_at")))
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=JST)
+        if generated_at.astimezone(JST).date() != datetime.now(JST).date():
+            return ""
+    except (TypeError, ValueError):
+        return ""
+
+    items = payload.get("data") or []
+    if not items:
+        return ""
+
+    cards = "".join(_turnover_watch_card(item) for item in items)
+    top_n = payload.get("top_n")
+    min_change_pct = payload.get("min_change_pct")
+    return f"""
+    <section class="panel">
+      <div class="section-title">売買代金ランキング 新顔ウォッチ</div>
+      <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝算出し、終日この結果を表示します)</div>
+      <div class="muted">本日の売買代金上位{html.escape(str(top_n))}銘柄のうち、ウォッチリスト未登録かつ前日比{html.escape(str(min_change_pct))}%以上動いた銘柄です。注目銘柄への追加はご自身の判断でどうぞ。</div>
+      {cards}
+    </section>
+    """
+
+
 def _nikkei_constituents_section(root: Path) -> str:
     payload = _load_json(root / "output" / "nikkei_constituents.json")
     if not payload:
@@ -989,6 +1037,7 @@ def run(root: Path) -> None:
         + _stock_range_score_section(root)
         + _watchlist_section(root)
         + _stock_ratings_section(root)
+        + _stock_turnover_watch_section(root)
         + _dividend_section(root)
         + _stock_x_trends_section(root)
         + _gemini_cost_footer(root)

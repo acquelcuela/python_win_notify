@@ -31,6 +31,7 @@ MODULE_ORDER = [
     "stock_sector",
     "stock_dividend",
     "stock_ratings",
+    "stock_turnover_watch",
     "market_news",
     "news_movers",
     "stock_x_trends",
