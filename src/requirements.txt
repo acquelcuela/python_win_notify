@@ -1,2 +1,4 @@
 yfinance>=0.2.40
 python-dotenv>=1.0.0
+beautifulsoup4>=4.12.0
+certifi>=2024.2.2

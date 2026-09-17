@@ -22,7 +22,7 @@
       "time": "22:00",
       "days": "all",
       "modules": [
-        "sumo_news", "sumo_news_mail", "sumo_news_digest",
+        "sumo_news", "sumo_banzuke", "sumo_hoshitori", "sumo_news_mail", "sumo_news_digest",
         "oricon_album", "oricon_album_mail",
         "keyword_watch", "keyword_watch_mail",
         "marketplace_watch", "marketplace_watch_mail",
@@ -54,6 +54,8 @@
     "stock_range_mail": true,
     "stock_range_eval": true,
     "sumo_news": true,
+    "sumo_banzuke": true,
+    "sumo_hoshitori": true,
     "sumo_news_mail": true,
     "sumo_news_digest": true,
     "oricon_album": true,
@@ -134,6 +136,9 @@
     "alias_file": "data/data_j_aliases.json",
     "max_tickers": 12,
     "min_name_length": 4
+  },
+  "sumo_basho": {
+    "code": "202609"
   },
   "sumo_news": {
     "queries": [
