@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import urllib.parse
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -276,7 +277,39 @@ def _stock_range_hit_rate_text(hit_rate: dict) -> str:
     return f"モメンタム型 {_text('momentum')} / リバーサル型 {_text('reversal')}"
 
 
-def _stock_range_candidate_cards(candidates: list[dict]) -> str:
+# "特別注目銘柄": tickers whose recorded stock_range hit rate has exceeded
+# 65% (n>=8, to avoid flagging on pure small-sample noise) - computed live
+# from state/stock_range_predictions.json on every render rather than a
+# static curated list, per user request 2026-09-17, so membership stays
+# current as more days accumulate and a ticker can drop back out again.
+SPECIAL_WATCH_MIN_N = 8
+SPECIAL_WATCH_HIT_RATE_PCT = 65.0
+
+
+def _special_watch_tickers(root: Path) -> dict[str, float]:
+    path = root / "state" / "stock_range_predictions.json"
+    if not path.exists():
+        return {}
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    by_ticker: dict[str, list[bool]] = defaultdict(list)
+    for r in records:
+        if r.get("evaluated") and r.get("hit") is not None and r.get("ticker"):
+            by_ticker[r["ticker"]].append(bool(r["hit"]))
+    result = {}
+    for ticker, hits in by_ticker.items():
+        n = len(hits)
+        if n < SPECIAL_WATCH_MIN_N:
+            continue
+        rate = sum(hits) / n * 100
+        if rate > SPECIAL_WATCH_HIT_RATE_PCT:
+            result[ticker] = rate
+    return result
+
+
+def _stock_range_candidate_cards(candidates: list[dict], special_watch: dict[str, float]) -> str:
     if not candidates:
         return '<div class="muted">該当銘柄なし</div>'
     cards = []
@@ -305,11 +338,23 @@ def _stock_range_candidate_cards(candidates: list[dict]) -> str:
             <div class="muted">30日レンジの{html.escape(str(position_pct))}%地点</div>
             """
         change_text, change_color = _fmt_change(candidate.get("change"), candidate.get("change_pct", 0))
+        special_rate = special_watch.get(candidate.get("ticker"))
+        card_style = (
+            "border:2px solid #f59e0b;background:#fffbeb;"
+            if special_rate is not None
+            else ""
+        )
+        special_badge = (
+            f'<span style="background:#f59e0b;color:#fff;font-size:11px;padding:1px 6px;'
+            f'border-radius:10px;margin-left:6px;">⭐特別注目 的中率{special_rate:.0f}%</span>'
+            if special_rate is not None
+            else ""
+        )
         cards.append(
             f"""
-            <div class="news-hit-card">
+            <div class="news-hit-card" style="{card_style}">
               <div class="news-hit-title">
-                <strong>{html.escape(candidate.get("name", ""))}</strong>
+                <strong>{html.escape(candidate.get("name", ""))}</strong>{special_badge}
                 <span class="muted">{_yahoo_finance_link(candidate.get("ticker", "-"))} {_fmt_decimal(candidate.get("close"))}円</span>
                 <span style="float:right;font-weight:bold;">{candidate.get("score")}点</span>
               </div>
@@ -379,6 +424,12 @@ def _index_range_cards(index_items: list[dict]) -> str:
     """
 
 
+# 2026-09-11時点の暫定的な目安: 先物+1%以上の朝はモメンタム的中率68%
+# (n=65、ただし実質4営業日分)だった一方、-0.5%未満の朝は43%だった。まだ
+# データが薄いためスコアには反映せず、目立たせるだけに留める。
+STRONG_FUTURES_THRESHOLD_PCT = 1.0
+
+
 def _stock_range_score_section(root: Path) -> str:
     payload = _load_json(root / "output" / "stock_range.json")
     if not payload or payload.get("status") != "ok":
@@ -388,17 +439,27 @@ def _stock_range_score_section(root: Path) -> str:
     market_note = ""
     if market_change_pct is not None:
         market_note = f'<div class="muted">日経225先物(夜間取引): {market_change_pct:+.2f}%</div>'
+        if market_change_pct >= STRONG_FUTURES_THRESHOLD_PCT:
+            market_note += (
+                '<div style="margin-top:6px;padding:8px 10px;background:#ecfdf5;border:1px solid #6ee7b7;'
+                'border-radius:6px;color:#047857;font-weight:bold;">'
+                f'📈 はっきりした先物高({market_change_pct:+.2f}%) - 過去データではこの水準の朝はモメンタム型の'
+                'あたりが多い傾向(参考値、まだ実績日数は少なめ)</div>'
+            )
+
+    special_watch = _special_watch_tickers(root)
 
     return f"""
     <section class="panel">
       <div class="section-title">30日レンジ 本日の上昇候補(機械的スコアリング・投資助言ではありません)</div>
       <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝06:45の市場が開く前に算出し、本日の値動きを対象にした候補です。終日この結果を表示します)</div>
       <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
+      <div class="muted">⭐特別注目銘柄: これまでの的中率が65%を超えた銘柄(n≥8)。カードを金色で強調表示します。</div>
       {market_note}
       <h3>モメンタム型(上昇継続を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [])}
+      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], special_watch)}
       <h3>リバーサル型(反発を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [])}
+      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], special_watch)}
       <div class="muted" style="margin-top:8px;">これまでの的中率(当日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
     </section>
     """

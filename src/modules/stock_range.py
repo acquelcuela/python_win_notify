@@ -99,6 +99,9 @@ def _market_adjustment(market_change_pct: float | None, factor: float, cap: floa
     return penalty, f"市場全体{market_change_pct:+.1f}%のため減点"
 
 
+MOMENTUM_SELLOFF_VETO_PCT = -0.5
+
+
 def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct: float | None = None) -> tuple[int, list[str]]:
     """Rule-based signal, not a prediction: recent uptrend + strength within
     the 30-day range + same-day positive X buzz. Purely mechanical scoring
@@ -107,7 +110,19 @@ def _momentum_score(item: dict, x_trend_hits: dict[str, dict], market_change_pct
     No "30日レンジ上位" bonus (removed 2026-09-09): a 590-record check found
     momentum candidates WITH this bonus hit less often than those without it
     (50% n=337 vs 53% n=131) - being near the 30-day high is, if anything,
-    a mild headwind for continuation, not the tailwind the bonus assumed."""
+    a mild headwind for continuation, not the tailwind the bonus assumed.
+
+    Vetoed outright on a broad-selloff morning (overnight futures below
+    MOMENTUM_SELLOFF_VETO_PCT), mirroring reversal's veto (2026-09-18 change):
+    a 658-record check on 2026-09-17 found this bucket still stuck at 41.8%
+    (n=91) vs 44.9-66.4% otherwise, and this correlation had not budged since
+    the 2026-08-11 _market_adjustment change was introduced to address it via
+    a mere score penalty. Not as severe as reversal's 27% crash, but the
+    penalty-only approach had ~5 weeks to work and the gap never closed, so
+    escalating to a veto here too."""
+    if market_change_pct is not None and market_change_pct < MOMENTUM_SELLOFF_VETO_PCT:
+        return 0, [f"市場全体{market_change_pct:+.1f}%の下落地合いのため見送り"]
+
     range_info = item.get("range_30d") or {}
     score = 0
     reasons: list[str] = []

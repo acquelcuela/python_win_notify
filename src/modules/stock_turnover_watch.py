@@ -22,6 +22,12 @@ DEFAULT_MIN_CHANGE_PCT = 3.0
 # short of adding it to the watchlist.
 DISMISSED_PATH = Path("state") / "stock_turnover_watch_dismissed.txt"
 
+# Daily snapshot archive so past new-entrant candidates can be looked back
+# on (output/stock_turnover_watch.json itself is overwritten every run) -
+# mirrors sumo_news's own history archive.
+HISTORY_DIR_NAME = "history"
+HISTORY_RETENTION_DAYS = 40
+
 # The ranking page's stock table has a stable, server-rendered structure
 # (code -> name -> market -> gaiyou/chart icon cells -> price -> blank cell
 # -> change -> change% -> trading value -> PER -> PBR -> yield). Matching
@@ -112,6 +118,27 @@ def _dismissed_tickers(root: Path) -> set[str]:
     return dismissed
 
 
+def _archive_history(root: Path, payload: dict) -> None:
+    history_dir = root / "output" / HISTORY_DIR_NAME
+    history_dir.mkdir(parents=True, exist_ok=True)
+    generated_at = payload.get("generated_at") or datetime.now(JST).isoformat()
+    try:
+        date_label = datetime.fromisoformat(str(generated_at)).astimezone(JST).strftime("%Y%m%d")
+    except (TypeError, ValueError):
+        date_label = datetime.now(JST).strftime("%Y%m%d")
+    history_path = history_dir / f"stock_turnover_watch_{date_label}.json"
+    history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    cutoff = datetime.now(JST) - timedelta(days=HISTORY_RETENTION_DAYS)
+    for existing in history_dir.glob("stock_turnover_watch_*.json"):
+        try:
+            file_date = datetime.strptime(existing.stem.split("_")[-1], "%Y%m%d").replace(tzinfo=JST)
+        except ValueError:
+            continue
+        if file_date < cutoff:
+            existing.unlink(missing_ok=True)
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -184,6 +211,10 @@ def run(root: Path) -> None:
         logging.info("[stock_turnover_watch] no new-entrant candidates today")
 
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Archive every day the ranking was actually fetched (whether or not it
+    # produced candidates), so "any days with none" is still answerable -
+    # but not a fetch-failure or unparseable-page day, which isn't real data.
+    _archive_history(root, payload)
 
 
 if __name__ == "__main__":
