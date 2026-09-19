@@ -167,8 +167,17 @@ def _side_cell(entry: dict | None, results: dict, day_no: int, id_colors: dict[s
         )
     marks, record_text = _marks_and_record(entry["rikishi_id"], results, day_no)
     name = html.escape(entry["kanji"])
+    wins, losses = _win_loss_counts(entry["rikishi_id"], results, day_no)
     color = id_colors.get(entry["rikishi_id"])
-    name_style = f"padding:2px 6px;color:{color};font-weight:bold;" if color else "padding:2px 6px;font-weight:bold;"
+    if wins == 0 and losses == 0:
+        # No decided bouts at all so far this basho - almost certainly kyujo
+        # (absent), so gray out the name rather than leaving it looking like
+        # an ordinary un-highlighted wrestler.
+        name_style = "padding:2px 6px;color:#9ca3af;"
+    elif color:
+        name_style = f"padding:2px 6px;color:{color};font-weight:bold;"
+    else:
+        name_style = "padding:2px 6px;font-weight:bold;"
     return (
         f'<td style="{name_style}">{name}</td>'
         f'<td style="padding:2px 6px;letter-spacing:2px;">{marks}</td>'
