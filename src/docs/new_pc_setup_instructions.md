@@ -45,8 +45,8 @@ git cloneしたディレクトリに向けて、以下を展開したアーカ�
 ### 3. Python環境をセットアップする
 
 git cloneしたディレクトリの`src/setup_windows.bat`を実行する。これが
-`.venv`を作成し、`requirements.txt`(yfinance, python-dotenvのみ、他は
-標準ライブラリ)をインストールする。Python本体(3.14想定)が
+`.venv`を作成し、`requirements.txt`(yfinance, python-dotenv, beautifulsoup4,
+certifi。他は標準ライブラリ)をインストールする。Python本体(3.14想定)が
 `%LOCALAPPDATA%\Python\...`配下に見つからない場合は、先にPythonの
 インストールが必要になる旨をユーザーに伝える。
 

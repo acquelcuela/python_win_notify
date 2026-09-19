@@ -14,7 +14,7 @@ pullでは来ないものが複数あるため、それらは個別にコピー�
 - `src/config.json`、各種`*_config.json`(keyword_watch_config.json等)
 - `src/data/data_j.csv`、`src/data/data_j_aliases.json`
 - `src/docs/`以下のドキュメント一式
-- `src/requirements.txt`(yfinance, python-dotenvのみ。他は標準ライブラリで完結)
+- `src/requirements.txt`(yfinance, python-dotenv, beautifulsoup4, certifi。他は標準ライブラリで完結)
 
 ## 2. gitignoreされていて個別コピーが必要なもの
 
