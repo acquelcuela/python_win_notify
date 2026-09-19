@@ -4,19 +4,19 @@
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
       "time": "07:00",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "stock_ratings", "stock_turnover_watch", "nikkei_constituents", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "stock_ratings", "stock_turnover_watch", "nikkei_constituents", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "09:30",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "12:15",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "17:30",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "22:00",
@@ -32,7 +32,7 @@
     },
     {
       "time": "23:00",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_sector", "stock_dividend", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     }
   ],
   "batch_window_minutes": 14,
@@ -40,7 +40,6 @@
   "modules": {
     "stock_nikkei": true,
     "stock_watchlist": true,
-    "stock_sector": false,
     "stock_dividend": true,
     "stock_ratings": true,
     "stock_turnover_watch": true,

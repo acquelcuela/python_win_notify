@@ -28,7 +28,6 @@ DAY_GROUP_ALIASES = {
 MODULE_ORDER = [
     "stock_nikkei",
     "stock_watchlist",
-    "stock_sector",
     "stock_dividend",
     "stock_ratings",
     "stock_turnover_watch",
