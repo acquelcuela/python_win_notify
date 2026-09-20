@@ -54,6 +54,7 @@ MODULE_ORDER = [
     "note_article_ideas",
     "note_article_ideas_export",
     "onedrive_check",
+    "disk_usage",
     "nikkei_constituents",
     "report_html",
     "mail_gmail",
@@ -90,6 +91,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="",
         help="Override the matched schedule time, e.g. 07:00, 09:30, 12:15, 22:45.",
+    )
+    parser.add_argument(
+        "--only",
+        type=str,
+        default="",
+        help="Run only this module (comma-separated for multiple), skipping the rest of the "
+        "schedule's modules. Implies --force. e.g. --only disk_usage",
     )
     return parser.parse_args()
 
@@ -326,8 +334,8 @@ def resolve_modules_for_schedule(schedule_key: str | None) -> list[str]:
     return [name for name in MODULE_ORDER if module_enabled(name)]
 
 
-def run_enabled_modules(schedule_key: str | None = None) -> None:
-    selected_modules = resolve_modules_for_schedule(schedule_key)
+def run_enabled_modules(schedule_key: str | None = None, only_modules: list[str] | None = None) -> None:
+    selected_modules = only_modules if only_modules is not None else resolve_modules_for_schedule(schedule_key)
     module_status = {name: ("on" if name in selected_modules else "off") for name in MODULE_ORDER}
 
     logging.info("Selected schedule: %s", schedule_key or "default")
@@ -366,6 +374,15 @@ def main() -> int:
             logging.error(error)
         return 1
 
+    only_modules = None
+    if args.only:
+        only_modules = [name.strip() for name in args.only.split(",") if name.strip()]
+        unknown = [name for name in only_modules if name not in MODULE_ORDER]
+        if unknown:
+            logging.error("Unknown module(s) for --only: %s", ", ".join(unknown))
+            return 1
+        args.force = True
+
     now = datetime.now(JST)
     started_at = now
     run_key = None
@@ -400,7 +417,7 @@ def main() -> int:
             os.environ["BATCH_SCHEDULE_KEY"] = schedule_key
         else:
             os.environ.pop("BATCH_SCHEDULE_KEY", None)
-        run_enabled_modules(schedule_key=schedule_key)
+        run_enabled_modules(schedule_key=schedule_key, only_modules=only_modules)
     except Exception:
         logging.exception("Batch failed.")
         return 1

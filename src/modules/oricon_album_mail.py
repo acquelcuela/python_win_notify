@@ -179,7 +179,7 @@ def run(root: Path) -> None:
         logging.warning("[oricon_album_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"NightlyBatchNotify アルバム新譜情報 {now.strftime('%Y-%m-%d')}"
+    subject = f"アルバム新譜情報 {now.strftime('%Y-%m-%d')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[oricon_album_mail] sent %d album item(s)", len(items))

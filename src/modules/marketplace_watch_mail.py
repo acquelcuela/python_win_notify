@@ -174,7 +174,7 @@ def run(root: Path) -> None:
         logging.warning("[marketplace_watch_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"NightlyBatchNotify フリマ新着監視 {now.strftime('%Y-%m-%d')}"
+    subject = f"フリマ新着監視 {now.strftime('%Y-%m-%d')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[marketplace_watch_mail] sent %d new item(s)", total_new)

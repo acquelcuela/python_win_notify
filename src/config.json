@@ -27,7 +27,7 @@
         "keyword_watch", "keyword_watch_mail",
         "marketplace_watch", "marketplace_watch_mail",
         "note_article_ideas", "note_article_ideas_export",
-        "onedrive_check"
+        "onedrive_check", "disk_usage"
       ]
     },
     {
@@ -66,6 +66,7 @@
     "note_article_ideas": true,
     "note_article_ideas_export": true,
     "onedrive_check": true,
+    "disk_usage": true,
     "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true

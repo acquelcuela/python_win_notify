@@ -59,5 +59,5 @@ def run(root: Path) -> None:
 
     html_body = report_path.read_text(encoding="utf-8")
     now = datetime.now(JST)
-    subject = f"NightlyBatchNotify {now.strftime('%Y-%m-%d')} morning report"
+    subject = f"{now.strftime('%Y-%m-%d')} morning report"
     send_html_mail(gmail_address, app_password, mail_to, subject, html_body)

@@ -349,7 +349,7 @@ def run(root: Path) -> None:
         logging.warning("[sumo_news_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"NightlyBatchNotify 大相撲ニュース {now.strftime('%Y-%m-%d %H:%M')}"
+    subject = f"大相撲ニュース {now.strftime('%Y-%m-%d %H:%M')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[sumo_news_mail] sent %d news items", len(items))
