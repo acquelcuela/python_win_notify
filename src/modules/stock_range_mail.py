@@ -232,7 +232,7 @@ def run(root: Path) -> None:
         logging.warning("[stock_range_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"[NightlyBatchNotify] 30日レンジ位置 {now.strftime('%Y-%m-%d')}"
+    subject = f"NightlyBatchNotify 30日レンジ位置 {now.strftime('%Y-%m-%d')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[stock_range_mail] sent range report for %d tickers", len(items))

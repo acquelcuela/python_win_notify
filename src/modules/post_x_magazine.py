@@ -113,7 +113,7 @@ def _send_post_notification(
         logging.warning("[post_x_magazine] failure mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"[NightlyBatchNotify] X post {status}: {magazine.get('name') or magazine.get('id') or 'post_x_magazine'}"
+    subject = f"NightlyBatchNotify X post {status}: {magazine.get('name') or magazine.get('id') or 'post_x_magazine'}"
     article_title = str(article.get("title") or "").strip() if article else "-"
     part_label = "-"
     if failed_part_index is not None:

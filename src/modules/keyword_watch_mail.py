@@ -128,7 +128,7 @@ def run(root: Path) -> None:
         logging.warning("[keyword_watch_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"[NightlyBatchNotify] キーワード月次検索 {now.strftime('%Y-%m')}"
+    subject = f"NightlyBatchNotify キーワード月次検索 {now.strftime('%Y-%m')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[keyword_watch_mail] sent %d item(s)", len(items))

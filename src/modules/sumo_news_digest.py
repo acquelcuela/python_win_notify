@@ -254,7 +254,7 @@ def run(root: Path) -> None:
       </body>
     </html>
     """
-    subject = f"[NightlyBatchNotify] 大相撲ニュース まとめ {now.strftime('%Y-%m-%d')}"
+    subject = f"NightlyBatchNotify 大相撲ニュース まとめ {now.strftime('%Y-%m-%d')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[sumo_news_digest] sent digest mail")

@@ -109,7 +109,7 @@ def run(root: Path) -> None:
         logging.warning("[onedrive_check] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"[NightlyBatchNotify] OneDriveフォルダ確認 {now.strftime('%Y-%m-%d')}"
+    subject = f"NightlyBatchNotify OneDriveフォルダ確認 {now.strftime('%Y-%m-%d')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[onedrive_check] sent mail")

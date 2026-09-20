@@ -172,8 +172,10 @@ def _side_cell(entry: dict | None, results: dict, day_no: int, id_colors: dict[s
     if wins == 0 and losses == 0:
         # No decided bouts at all so far this basho - almost certainly kyujo
         # (absent), so gray out the name rather than leaving it looking like
-        # an ordinary un-highlighted wrestler.
+        # an ordinary un-highlighted wrestler, and drop the run of "・" marks
+        # (they carry no information here and just eat up column width).
         name_style = "padding:2px 6px;color:#9ca3af;"
+        marks = ""
     elif color:
         name_style = f"padding:2px 6px;color:{color};font-weight:bold;"
     else:
@@ -347,7 +349,7 @@ def run(root: Path) -> None:
         logging.warning("[sumo_news_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"[NightlyBatchNotify] 大相撲ニュース {now.strftime('%Y-%m-%d %H:%M')}"
+    subject = f"NightlyBatchNotify 大相撲ニュース {now.strftime('%Y-%m-%d %H:%M')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[sumo_news_mail] sent %d news items", len(items))
