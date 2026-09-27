@@ -18,6 +18,21 @@ def _list_drive_letters() -> list[str]:
     return [f"{chr(ord('A') + i)}:\\" for i in range(26) if bitmask & (1 << i)]
 
 
+def _get_volume_label(drive: str) -> str:
+    name_buffer = ctypes.create_unicode_buffer(261)
+    try:
+        ok = ctypes.windll.kernel32.GetVolumeInformationW(
+            ctypes.c_wchar_p(drive), name_buffer, ctypes.sizeof(name_buffer), None, None, None, None, 0
+        )
+    except OSError:
+        return ""
+    return name_buffer.value.strip() if ok else ""
+
+
+def _display_name(drive: str, label: str) -> str:
+    return f"{drive} ({label})" if label else drive
+
+
 def _fmt_gb(num_bytes: int) -> str:
     return f"{num_bytes / (1024 ** 3):.1f} GB"
 
@@ -34,6 +49,7 @@ def _collect_disk_stats() -> list[dict]:
         stats.append(
             {
                 "drive": drive,
+                "label": _get_volume_label(drive),
                 "total_bytes": usage.total,
                 "used_bytes": usage.used,
                 "free_bytes": usage.free,
@@ -61,7 +77,8 @@ def run(root: Path) -> None:
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     logging.info(
         "[disk_usage] %s",
-        ", ".join(f"{s['drive']} {s['free_pct']:.1f}% free" for s in stats) or "no drives found",
+        ", ".join(f"{_display_name(s['drive'], s['label'])} {s['free_pct']:.1f}% free" for s in stats)
+        or "no drives found",
     )
 
     rows = []
@@ -70,7 +87,7 @@ def run(root: Path) -> None:
         color = "#b91c1c" if free_pct < 10 else ("#ca8a04" if free_pct < 20 else "#047857")
         rows.append(
             "<tr>"
-            f'<td style="padding:4px 10px;font-weight:bold;">{html.escape(s["drive"])}</td>'
+            f'<td style="padding:4px 10px;font-weight:bold;">{html.escape(_display_name(s["drive"], s["label"]))}</td>'
             f'<td style="padding:4px 10px;">{_fmt_gb(s["total_bytes"])}</td>'
             f'<td style="padding:4px 10px;">{_fmt_gb(s["used_bytes"])}</td>'
             f'<td style="padding:4px 10px;">{_fmt_gb(s["free_bytes"])}</td>'

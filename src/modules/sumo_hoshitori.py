@@ -115,7 +115,8 @@ def run(root: Path) -> None:
     results = state.get("results") or {}
 
     rank_code_to_id = {
-        e["rank_code"]: e["rikishi_id"] for e in banzuke["makuuchi"] + banzuke["juryo"]
+        e["rank_code"]: e["rikishi_id"]
+        for e in banzuke["makuuchi"] + banzuke["juryo"] + (banzuke.get("makushita") or [])
     }
 
     fetched_new = False

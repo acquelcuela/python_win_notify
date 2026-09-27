@@ -14,7 +14,8 @@ from bs4 import BeautifulSoup
 
 JST = timezone(timedelta(hours=9), "JST")
 SUMODB_BASE = "http://sumodb.sumogames.de"
-DIVISIONS = {"M": "makuuchi", "J": "juryo"}
+DIVISIONS = {"M": "makuuchi", "J": "juryo", "Ms": "makushita"}
+MAKUSHITA_MAX_RANK = 12
 
 
 def _load_config(root: Path) -> dict:
@@ -52,7 +53,9 @@ def _parse_date_range(html: str) -> tuple[str, str, str] | None:
     return title, start, end
 
 
-def _parse_division_table(soup: BeautifulSoup, anchor_name: str, division: str) -> list[dict]:
+def _parse_division_table(
+    soup: BeautifulSoup, anchor_name: str, division: str, max_num: int | None = None
+) -> list[dict]:
     anchor = soup.find("a", attrs={"name": anchor_name})
     if not anchor:
         return []
@@ -82,6 +85,8 @@ def _parse_division_table(soup: BeautifulSoup, anchor_name: str, division: str) 
             letter = short_rank
             counters[letter] = counters.get(letter, 0) + 1
             num = counters[letter]
+        if max_num is not None and num > max_num:
+            continue
         for td, side in ((east_td, "e"), (west_td, "w")):
             if "emptycell" in (td.get("class") or []):
                 continue
@@ -170,16 +175,23 @@ def run(root: Path) -> None:
     soup = BeautifulSoup(html, "html.parser")
     makuuchi = _parse_division_table(soup, "M", "makuuchi")
     juryo = _parse_division_table(soup, "J", "juryo")
+    makushita = _parse_division_table(soup, "Ms", "makushita", max_num=MAKUSHITA_MAX_RANK)
 
-    if not makuuchi or not juryo:
+    if not makuuchi or not juryo or not makushita:
         result = {
             "module": "sumo_banzuke",
             "generated_at": generated_at,
             "status": "error",
-            "reason": f"parsed makuuchi={len(makuuchi)} juryo={len(juryo)} entries - expected ~42/~28.",
+            "reason": (
+                f"parsed makuuchi={len(makuuchi)} juryo={len(juryo)} "
+                f"makushita={len(makushita)} entries - expected ~42/~28/~24."
+            ),
         }
         output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.error("[sumo_banzuke] unexpected entry counts for code %s: makuuchi=%d juryo=%d", code, len(makuuchi), len(juryo))
+        logging.error(
+            "[sumo_banzuke] unexpected entry counts for code %s: makuuchi=%d juryo=%d makushita=%d",
+            code, len(makuuchi), len(juryo), len(makushita),
+        )
         return
 
     banzuke = {
@@ -189,6 +201,7 @@ def run(root: Path) -> None:
         "end_date": end_date,
         "makuuchi": makuuchi,
         "juryo": juryo,
+        "makushita": makushita,
         "fetched_at": generated_at,
     }
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -198,10 +211,16 @@ def run(root: Path) -> None:
         "module": "sumo_banzuke",
         "generated_at": generated_at,
         "status": "ok",
-        "reason": f"fetched and cached {title} ({start_date} - {end_date}): makuuchi={len(makuuchi)} juryo={len(juryo)}.",
+        "reason": (
+            f"fetched and cached {title} ({start_date} - {end_date}): "
+            f"makuuchi={len(makuuchi)} juryo={len(juryo)} makushita={len(makushita)}."
+        ),
     }
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    logging.info("[sumo_banzuke] cached banzuke for %s (%s): makuuchi=%d juryo=%d", code, title, len(makuuchi), len(juryo))
+    logging.info(
+        "[sumo_banzuke] cached banzuke for %s (%s): makuuchi=%d juryo=%d makushita=%d",
+        code, title, len(makuuchi), len(juryo), len(makushita),
+    )
 
 
 if __name__ == "__main__":

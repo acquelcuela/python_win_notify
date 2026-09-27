@@ -12,7 +12,7 @@ from modules.mail_gmail import send_html_mail
 JST = timezone(timedelta(hours=9), "JST")
 OTHER_LABEL = "その他"
 RANK_ORDER = ["横綱", "大関", "関脇", "小結", "前頭", "十両"]
-RANK_LETTER_ORDER = {"Y": 0, "O": 1, "S": 2, "K": 3, "M": 4, "J": 5}
+RANK_LETTER_ORDER = {"Y": 0, "O": 1, "S": 2, "K": 3, "M": 4, "J": 5, "Ms": 6}
 
 
 def _load_json(path: Path) -> dict | None:
@@ -77,7 +77,7 @@ def _group_by_wrestler(items: list[dict]) -> list[tuple[str, str | None, list[di
     return result
 
 
-RANK_LABEL = {"Y": "横綱", "O": "大関", "S": "関脇", "K": "小結", "M": "前頭", "J": "十両"}
+RANK_LABEL = {"Y": "横綱", "O": "大関", "S": "関脇", "K": "小結", "M": "前頭", "J": "十両", "Ms": "幕下"}
 
 
 def _rank_code_parts(rank_code: str) -> tuple[str, int, str] | None:
@@ -108,7 +108,10 @@ def _marks_and_record(rikishi_id: str | None, results: dict, day_no: int) -> tup
     for day in range(1, day_no + 1):
         day_result = record.get(str(day))
         if day_result is None:
-            marks += '<span style="color:#cbd5e1;">・</span>'
+            # Blank rather than a "・" placeholder - for makushita and below,
+            # a day with no bout is normal (they don't fight every day), not
+            # something worth visually flagging like a decided win/loss.
+            marks += '<span>&nbsp;</span>'
         elif day_result.get("win"):
             marks += '<span style="color:#dc2626;font-weight:bold;">○</span>'
         else:
@@ -121,14 +124,22 @@ def _marks_and_record(rikishi_id: str | None, results: dict, day_no: int) -> tup
 # cool palette for worst records (1st-worst darkest navy, fading toward a
 # lighter blue) - one shade per record-rank, not per individual, so ties
 # within a record share a shade.
-TOP_COLORS = ["#b91c1c", "#ea580c", "#ca8a04"]
-WORST_COLORS = ["#1e3a8a", "#2563eb"]
+TOP_COLORS = ["#b91c1c", "#ea580c", "#d97706", "#ca8a04"]
+WORST_COLORS = ["#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6"]
+
+# Through day 9, highlight top-3/worst-2; from day 10 on (as the yusho and
+# make-koshi races tighten up) widen that to top-4/worst-4.
+EARLY_TOP_N = 3
+EARLY_WORST_N = 2
+LATE_TOP_N = 4
+LATE_WORST_N = 4
+LATE_DAY_THRESHOLD = 9
 
 
 def _ranked_groups(entries: list[dict], results: dict, day_no: int):
     """Groups wrestlers with at least one decided bout by (wins, losses),
-    then picks the top-3 and worst-2 records (not individuals) - ties share
-    a record group, so e.g. nine wrestlers can all be "top" at 4-1."""
+    then picks the top and worst records (not individuals) - ties share a
+    record group, so e.g. nine wrestlers can all be "top" at 4-1."""
     ranked = []
     for e in entries:
         wins, losses = _win_loss_counts(e["rikishi_id"], results, day_no)
@@ -140,8 +151,12 @@ def _ranked_groups(entries: list[dict], results: dict, day_no: int):
     for e, wins, losses in ranked:
         groups.setdefault((wins, losses), []).append(e)
 
-    top_records = sorted(groups.keys(), key=lambda r: (-r[0], r[1]))[:3]
-    worst_records = sorted(groups.keys(), key=lambda r: (-r[1], -r[0]))[:2]
+    is_late = day_no > LATE_DAY_THRESHOLD
+    top_n = LATE_TOP_N if is_late else EARLY_TOP_N
+    worst_n = LATE_WORST_N if is_late else EARLY_WORST_N
+
+    top_records = sorted(groups.keys(), key=lambda r: (-r[0], r[1]))[:top_n]
+    worst_records = sorted(groups.keys(), key=lambda r: (-r[1], -r[0]))[:worst_n]
     return groups, top_records, worst_records
 
 
@@ -232,8 +247,8 @@ def _leaderboard(entries: list[dict], results: dict, day_no: int, label: str) ->
     return (
         f'<h3 style="margin-top:16px;">{html.escape(label)}成績上位・下位</h3>'
         f'<div style="font-size:13px;">'
-        f'<b>勝ち星トップ3</b><ul style="margin:4px 0 8px;">{_list_items(top_records, TOP_COLORS)}</ul>'
-        f'<b>負け込みワースト2</b><ul style="margin:4px 0 8px;">{_list_items(worst_records, WORST_COLORS)}</ul>'
+        f'<b>勝ち星トップ{len(top_records)}</b><ul style="margin:4px 0 8px;">{_list_items(top_records, TOP_COLORS)}</ul>'
+        f'<b>負け込みワースト{len(worst_records)}</b><ul style="margin:4px 0 8px;">{_list_items(worst_records, WORST_COLORS)}</ul>'
         f"</div>"
     )
 
@@ -257,7 +272,14 @@ def _hoshitori_section(root: Path, config: dict) -> str:
     results = hoshitori.get("results") or {}
     title = html.escape(banzuke.get("title") or "")
     section = f'<div style="color:#6b7280;font-size:12px;margin-top:24px;">{title} {day_no}日目終了時点</div>'
-    for entries, label in ((banzuke.get("makuuchi") or [], "幕内"), (banzuke.get("juryo") or [], "十両")):
+    divisions = (
+        (banzuke.get("makuuchi") or [], "幕内"),
+        (banzuke.get("juryo") or [], "十両"),
+        (banzuke.get("makushita") or [], "幕下"),
+    )
+    for entries, label in divisions:
+        if not entries:
+            continue
         groups, top_records, worst_records = _ranked_groups(entries, results, day_no)
         id_colors = _id_color_map(groups, top_records, worst_records)
         section += _leaderboard(entries, results, day_no, label)
