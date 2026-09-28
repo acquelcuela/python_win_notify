@@ -620,3 +620,52 @@ perform this action."...}`というエラーは、X Developer Community
 その後、送信時刻を`07:00`から`21:30`(平日のみ)へ変更した。`21:30`には
 `stock_watchlist`自体は含めていないため、その日最後に`stock_watchlist`が実行された
 時点(通常は12:15枠)のスナップショットを使う形になる。
+
+## stock_x_trends: Grok APIコストの可視化とWeb画面代替案の検証(2026-09-28)
+
+`stock_x_trends`(唯一Grok APIを呼ぶモジュール)の実行コストを可視化してほしいという
+要望から、xAI APIレスポンスの`usage.cost_in_usd_ticks`(トークン代+X Search従量課金を
+含む実コスト、`ticks / 1e10 = USD`と実測で確認済み)を使う`GrokUsageTracker`を追加した
+(`modules/stock_x_trends.py`)。独自の料金表を持たず、xAI自身が返す値をそのまま使う設計。
+実測では1回あたり数円〜数十円程度で、1日2回(07:00/23:00)×1〜3パスの合計で
+1日あたり数円〜数十円程度に収まっている。
+
+このコスト可視化を踏まえ、「API課金の代わりにWeb画面版Grokから情報を取れないか」
+という提案があり、2つのアプローチを検証した。いずれも**不採用**という結論。
+
+**① Claude Code CLI (`claude -p --chrome`) 経由でChromeを操作する案**
+`modules/stock_x_trends_web_fetch.py`として実装(claude CLIをサブプロセス起動し、
+`--chrome`でclaude-in-chrome連携、`--dangerously-skip-permissions`で無人実行を想定)。
+`stock_x_trends.py`側にも`source: "api" | "web"`の切り替えを追加
+(`_run_from_web_cache`、デフォルトは`"api"`のまま=既存動作に影響なし)。
+
+実際に動かしたところ、**非対話(`-p`)モードではclaude-in-chrome拡張のMCPツール自体が
+読み込まれない**ことが判明(`--chrome`フラグを付けても不可)。ネストされたClaude自身が
+「対話モードでないとChrome連携が有効化されない」と回答しており、構造的な制限と判断。
+また、この機能を`main.py`の`MODULE_ORDER`/`config.json`に登録して無人スケジュールに
+組み込もうとした際、Claude Code自体の安全機構(auto modeの分類器)が
+「Create Unsafe Agents」として操作をブロックした(ファイルの単純なimport確認すら
+ブロックされた)。無許可でエージェントを自動起動する仕組みを無人バッチに仕込むこと
+自体が、意図的に制止される設計になっているとみられる。
+
+**② Playwrightで直接grok.comを操作する案(ログインなし)**
+アカウント紐付けなし(=アカウントBANリスクなし)を前提に、Playwright+Chromiumで
+grok.comへ匿名アクセスして試した。CAPTCHA/bot検知には引っかからずチャット画面
+(`textarea[aria-label="Ask Grok anything"]`)に到達し、質問文の送信自体は成功したが、
+**送信直後に「Continue your conversation / Sign up to continue seamlessly with
+Grok's full power」というサインアップの壁が出て、Grokからの実際の回答が一切
+返ってこない**ことを実機確認した。つまり匿名利用ではそもそも回答が得られない仕様
+であり、bot検知以前の問題として詰んでいる。ログインすれば回答は得られる可能性が
+高いが、その場合は当初懸念していたアカウントBAN・利用規約違反のリスクに戻る。
+
+**現状の結論**: Grok APIのコストは`GrokUsageTracker`の実測で軽微(1日数円〜数十円)と
+判明しており、Web画面代替のリスク(規約違反・アカウントBAN・UI変更への脆弱性・
+bot検知)に見合わないため、**API方式を継続**することにした。
+
+**残したもの**: `modules/stock_x_trends_web_fetch.py`および`main.py`/
+`stock_x_trends.py`の`source`切り替えは、未コミットのまま(gitには上げていない)
+ローカルに残している。デフォルト`source: "api"`なので現状の動作には影響しない。
+将来ログイン前提でWeb画面案を再検討する際の土台として残しているだけで、
+**いつ削除しても構わない**。Playwright本体とChromiumバイナリ(`.venv`・
+`%LOCALAPPDATA%\ms-playwright`、計150MB超)も同様に、将来の再実験に備えて
+アンインストールせず残してある。
