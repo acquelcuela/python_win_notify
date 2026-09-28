@@ -220,6 +220,14 @@ def run(root: Path) -> None:
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     logging.info("[sumo_news_digest] summarized %d item(s) into %d topic(s) over %d day(s)", len(items), len(topics), lookback_days)
 
+    # Kept forever (no retention pruning) alongside sumo_news's own daily
+    # archive - these are the periodic write-ups meant to source a long-term
+    # sumo chronology, not just a same-day status snapshot.
+    history_dir = output_dir / "history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    history_path = history_dir / f"sumo_news_digest_{now.strftime('%Y%m%d')}.json"
+    history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
     gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
     app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
     mail_to = os.getenv("MAIL_TO", "").strip()

@@ -16,13 +16,14 @@ DEFAULT_QUERIES = [
 ]
 
 HISTORY_DIR_NAME = "history"
-HISTORY_RETENTION_DAYS = 40
 
 
 def _archive_history(root: Path, payload: dict) -> None:
     """Daily snapshot archive so sumo_news_digest can look back over the
     past ~10 days without needing its own separate fetch - mirrors
-    stock_x_trends's own history archive."""
+    stock_x_trends's own history archive. Kept forever (no retention
+    pruning): this is the raw source material for a long-term sumo
+    chronology, so old snapshots are deliberately never deleted."""
     history_dir = root / "output" / HISTORY_DIR_NAME
     history_dir.mkdir(parents=True, exist_ok=True)
     generated_at = payload.get("generated_at") or datetime.now(JST).isoformat()
@@ -32,15 +33,6 @@ def _archive_history(root: Path, payload: dict) -> None:
         date_label = datetime.now(JST).strftime("%Y%m%d")
     history_path = history_dir / f"sumo_news_{date_label}.json"
     history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    cutoff = datetime.now(JST) - timedelta(days=HISTORY_RETENTION_DAYS)
-    for existing in history_dir.glob("sumo_news_*.json"):
-        try:
-            file_date = datetime.strptime(existing.stem.split("_")[-1], "%Y%m%d").replace(tzinfo=JST)
-        except ValueError:
-            continue
-        if file_date < cutoff:
-            existing.unlink(missing_ok=True)
 
 
 def _normalized_story_key(item: dict) -> str:
