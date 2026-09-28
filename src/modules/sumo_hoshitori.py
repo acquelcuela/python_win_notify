@@ -15,6 +15,7 @@ JST = timezone(timedelta(hours=9), "JST")
 SUMODB_BASE = "http://sumodb.sumogames.de"
 BOUT_RE = re.compile(r"([A-Z][a-z]?\d+[ew])\s+([^\s(]+)\s*\((\d+-\d+(?:-\d+)?)\)")
 MAX_DAYS = 15
+GRACE_DAYS_AFTER_END = 5
 
 
 def _load_config(root: Path) -> dict:
@@ -97,12 +98,32 @@ def run(root: Path) -> None:
     start_date = datetime.strptime(banzuke["start_date"], "%Y-%m-%d").date()
     end_date = datetime.strptime(banzuke["end_date"], "%Y-%m-%d").date()
     today = datetime.now(JST).date()
-    if today < start_date or today > end_date:
+    if today < start_date:
         result = {
             "module": "sumo_hoshitori",
             "generated_at": generated_at,
             "status": "skipped",
-            "reason": f"today ({today}) is outside the honbasho period ({start_date} - {end_date}).",
+            "reason": f"today ({today}) is before this honbasho starts ({start_date}).",
+        }
+        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        return
+
+    # Keep retrying for a few days past end_date rather than cutting off
+    # immediately - a fetch failure/hang on the final day itself (day 15)
+    # would otherwise permanently lose that day's results, since no later
+    # run would ever be allowed to pick it back up. The grace window is
+    # bounded so this doesn't poll sumodb forever for a basho that's long
+    # since wrapped up.
+    grace_deadline = end_date + timedelta(days=GRACE_DAYS_AFTER_END)
+    if today > grace_deadline:
+        result = {
+            "module": "sumo_hoshitori",
+            "generated_at": generated_at,
+            "status": "skipped",
+            "reason": (
+                f"today ({today}) is past the {GRACE_DAYS_AFTER_END}-day grace period "
+                f"after this honbasho ended ({end_date})."
+            ),
         }
         output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         return

@@ -45,6 +45,7 @@ MODULE_ORDER = [
     "sumo_news",
     "sumo_banzuke",
     "sumo_hoshitori",
+    "sumo_basho_final",
     "sumo_news_mail",
     "sumo_news_digest",
     "oricon_album",

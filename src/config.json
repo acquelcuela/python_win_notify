@@ -22,7 +22,7 @@
       "time": "22:00",
       "days": "all",
       "modules": [
-        "sumo_news", "sumo_banzuke", "sumo_hoshitori", "sumo_news_mail", "sumo_news_digest",
+        "sumo_news", "sumo_banzuke", "sumo_hoshitori", "sumo_basho_final", "sumo_news_mail", "sumo_news_digest",
         "oricon_album", "oricon_album_mail",
         "keyword_watch", "keyword_watch_mail",
         "marketplace_watch", "marketplace_watch_mail",
@@ -55,6 +55,7 @@
     "sumo_news": true,
     "sumo_banzuke": true,
     "sumo_hoshitori": true,
+    "sumo_basho_final": true,
     "sumo_news_mail": true,
     "sumo_news_digest": true,
     "oricon_album": true,
