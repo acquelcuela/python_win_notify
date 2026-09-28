@@ -186,6 +186,7 @@ def run(root: Path) -> None:
     results = []
     warnings = []
     for target in _load_targets(root):
+        logging.info("[stock_watchlist] fetching %s", target["ticker"])
         try:
             result = _fetch_target(target)
             results.append(result)

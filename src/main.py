@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import sys
+import threading
+import traceback
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
@@ -323,6 +325,51 @@ def load_module_runner(module_name: str):
     return module.run
 
 
+MODULE_TIMEOUT_SECONDS = 180
+
+
+def run_module_with_watchdog(name: str, runner, timeout_seconds: int = MODULE_TIMEOUT_SECONDS) -> bool:
+    """Runs one module's runner(root=ROOT) in a background thread with a
+    timeout, so a single module that hangs (e.g. a stalled network call in a
+    library that doesn't honor its own timeout) or raises can't silently take
+    the rest of the scheduled run down with it. Before this, a hang was
+    invisible: nothing gets logged when Task Scheduler's ExecutionTimeLimit
+    eventually force-kills the whole process tree, and every later module in
+    that slot (including mail_gmail) never ran. Returns True if the module
+    completed normally."""
+    error_box: list[BaseException] = []
+
+    def _target() -> None:
+        try:
+            runner(root=ROOT)
+        except BaseException as exc:  # noqa: BLE001 - reported on the main thread below
+            error_box.append(exc)
+
+    thread = threading.Thread(target=_target, name=f"module-{name}", daemon=True)
+    thread.start()
+    thread.join(timeout_seconds)
+
+    if thread.is_alive():
+        logging.error(
+            "[%s] timed out after %ds (likely hung on a network call) - "
+            "abandoning this module and continuing with the rest of the schedule. "
+            "The stalled thread is left running in the background and will be "
+            "torn down when the process exits.",
+            name,
+            timeout_seconds,
+        )
+        return False
+    if error_box:
+        exc = error_box[0]
+        logging.error(
+            "[%s] raised an exception:\n%s",
+            name,
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        )
+        return False
+    return True
+
+
 def resolve_modules_for_schedule(schedule_key: str | None) -> list[str]:
     if schedule_key:
         try:
@@ -352,8 +399,8 @@ def run_enabled_modules(schedule_key: str | None = None, only_modules: list[str]
             continue
 
         logging.info("[%s] started", name)
-        runner(root=ROOT)
-        logging.info("[%s] completed", name)
+        if run_module_with_watchdog(name, runner):
+            logging.info("[%s] completed", name)
 
 
 def main() -> int:

@@ -156,7 +156,13 @@ def _ranked_groups(entries: list[dict], results: dict, day_no: int):
     worst_n = LATE_WORST_N if is_late else EARLY_WORST_N
 
     top_records = sorted(groups.keys(), key=lambda r: (-r[0], r[1]))[:top_n]
-    worst_records = sorted(groups.keys(), key=lambda r: (-r[1], -r[0]))[:worst_n]
+    # A record with more wins than losses shouldn't show up as "worst" just
+    # because its loss count happens to be high - e.g. without this filter,
+    # a 4-3 record could previously outrank a 1-3 record for a worst slot
+    # (same losses, tie-broken toward more wins). Only genuinely losing-or-
+    # even records (wins <= losses) are eligible here.
+    worst_candidates = [r for r in groups.keys() if r[0] <= r[1]]
+    worst_records = sorted(worst_candidates, key=lambda r: (-r[1], -r[0]))[:worst_n]
     return groups, top_records, worst_records
 
 
