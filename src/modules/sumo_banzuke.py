@@ -17,6 +17,23 @@ SUMODB_BASE = "http://sumodb.sumogames.de"
 DIVISIONS = {"M": "makuuchi", "J": "juryo", "Ms": "makushita"}
 MAKUSHITA_MAX_RANK = 12
 
+# The six honbasho months have been fixed for decades (verified against
+# sumodb's own basho archive, which lists every basho back to 1757 under
+# this same odd-month pattern for the modern era): Hatsu(1)/Haru(3)/
+# Natsu(5)/Nagoya(7)/Aki(9)/Kyushu(11). This lets the current/most-recent
+# basho's code (YYYYMM) be computed from today's date alone, so
+# config.json's sumo_basho.code no longer needs manual updates six times a
+# year - it only switches to the next basho's code on the 1st of that
+# basho's month, which is always well before the tournament itself starts
+# (~day 8-15), so nothing is ever missed by not detecting it earlier.
+HONBASHO_MONTHS = (1, 3, 5, 7, 9, 11)
+
+
+def auto_basho_code(today) -> str:
+    year = today.year
+    month = max(m for m in HONBASHO_MONTHS if m <= today.month)
+    return f"{year}{month:02d}"
+
 
 def _load_config(root: Path) -> dict:
     path = root / "config.json"
@@ -124,16 +141,8 @@ def run(root: Path) -> None:
     generated_at = datetime.now(JST).isoformat()
 
     config = _load_config(root).get("sumo_basho") or {}
-    code = str(config.get("code") or "").strip()
-    if not code:
-        result = {
-            "module": "sumo_banzuke",
-            "generated_at": generated_at,
-            "status": "skipped",
-            "reason": "config.json sumo_basho.code is not set - not in a honbasho period.",
-        }
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        return
+    manual_code = str(config.get("code") or "").strip()
+    code = manual_code or auto_basho_code(datetime.now(JST).date())
 
     state_path = root / "state" / f"sumo_banzuke_{code}.json"
     if state_path.exists():

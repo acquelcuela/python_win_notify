@@ -10,6 +10,8 @@ from pathlib import Path
 
 import certifi
 
+from modules.sumo_banzuke import auto_basho_code
+
 
 JST = timezone(timedelta(hours=9), "JST")
 SUMODB_BASE = "http://sumodb.sumogames.de"
@@ -72,16 +74,8 @@ def run(root: Path) -> None:
     generated_at = datetime.now(JST).isoformat()
 
     config = _load_config(root).get("sumo_basho") or {}
-    code = str(config.get("code") or "").strip()
-    if not code:
-        result = {
-            "module": "sumo_hoshitori",
-            "generated_at": generated_at,
-            "status": "skipped",
-            "reason": "config.json sumo_basho.code is not set - not in a honbasho period.",
-        }
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        return
+    manual_code = str(config.get("code") or "").strip()
+    code = manual_code or auto_basho_code(datetime.now(JST).date())
 
     banzuke_path = root / "state" / f"sumo_banzuke_{code}.json"
     banzuke = _load_json(banzuke_path)

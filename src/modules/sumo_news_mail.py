@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from modules.mail_gmail import send_html_mail
+from modules.sumo_banzuke import auto_basho_code
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -260,16 +261,28 @@ def _leaderboard(entries: list[dict], results: dict, day_no: int, label: str) ->
 
 
 def _hoshitori_section(root: Path, config: dict) -> str:
-    """Renders makuuchi/juryo star charts for the tail of the mail - skipped
-    entirely (returns "") whenever sumo_basho.code isn't configured or its
-    cached banzuke/hoshitori state files don't exist, per the design where a
-    missing local file means "not in a honbasho period, omit the section"."""
-    code = str((config.get("sumo_basho") or {}).get("code") or "").strip()
-    if not code:
-        return ""
+    """Renders makuuchi/juryo/makushita star charts for the tail of the daily
+    mail - only while a honbasho is actually in progress (today within the
+    banzuke's start_date/end_date). Once the tournament ends this goes back
+    to returning "" the same day, even though the cached state files stick
+    around for a few more days (sumo_hoshitori's grace period) and the code
+    itself doesn't roll over to the next basho until the 1st of its month -
+    without this date check, the daily mail would keep re-showing the same
+    now-stale final standings for weeks. sumo_basho_final's one-time mail is
+    the intended way to see the wrap-up after the basho is over."""
+    manual_code = str((config.get("sumo_basho") or {}).get("code") or "").strip()
+    code = manual_code or auto_basho_code(datetime.now(JST).date())
     banzuke = _load_json(root / "state" / f"sumo_banzuke_{code}.json")
     hoshitori = _load_json(root / "state" / f"sumo_hoshitori_{code}.json")
     if not banzuke or not hoshitori:
+        return ""
+    try:
+        start_date = datetime.strptime(banzuke["start_date"], "%Y-%m-%d").date()
+        end_date = datetime.strptime(banzuke["end_date"], "%Y-%m-%d").date()
+    except (KeyError, ValueError):
+        return ""
+    today = datetime.now(JST).date()
+    if today < start_date or today > end_date:
         return ""
     days_done = hoshitori.get("days_done") or []
     if not days_done:

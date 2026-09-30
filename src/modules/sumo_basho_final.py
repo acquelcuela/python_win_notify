@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from modules.mail_gmail import send_html_mail
+from modules.sumo_banzuke import auto_basho_code
 from modules.sumo_news_mail import _hoshitori_table, _id_color_map, _leaderboard, _load_json, _ranked_groups
 
 
@@ -41,10 +42,8 @@ def run(root: Path) -> None:
     output_path = output_dir / "sumo_basho_final.json"
     generated_at = datetime.now(JST).isoformat()
 
-    code = str((_load_config(root).get("sumo_basho") or {}).get("code") or "").strip()
-    if not code:
-        _skip(output_path, generated_at, "config.json sumo_basho.code is not set - not in a honbasho period.")
-        return
+    manual_code = str((_load_config(root).get("sumo_basho") or {}).get("code") or "").strip()
+    code = manual_code or auto_basho_code(datetime.now(JST).date())
 
     # This marker is the only thing that makes the mail/archive a one-time
     # event - once it exists for this basho code, every later run this
