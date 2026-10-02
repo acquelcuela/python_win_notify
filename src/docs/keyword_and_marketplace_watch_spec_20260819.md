@@ -24,7 +24,8 @@
 
 ### 目的
 
-登録したキーワードについて、月1回まとめて関連ニュース・記事を検索し、
+登録したキーワードについて、毎月10・20・30日にまとめて関連ニュース・記事を検索し、
+(2026-10-02に月1回=毎月1日から変更。月1回だと忘れやすいため。2月は30日がないので2回のみ)
 メールで通知する。日々の値動き系レポートとは別に、緩やかに継続ウォッチしたい
 トピック用。
 
@@ -38,15 +39,15 @@ Google News RSS(既存の`market_news.py`・`sumo_news.py`と同じ方式)。
 ```json
 "keyword_watch": {
   "queries": ["キーワード1", "キーワード2"],
-  "day_of_month": 1,
+  "schedule_days": [10, 20, 30],
   "lookback_days": 31,
   "max_items": 20
 }
 ```
 
 - `queries`: 検索キーワードのリスト(ユーザーから追って提供)
-- `day_of_month`: 実行日(例: 毎月1日)
-- `lookback_days`: 前回実行からの期間相当。月次なので31日を目安にする
+- `schedule_days`: 実行日のリスト(現在は毎月10・20・30日。`sumo_news_digest`と同じ方式)
+- `lookback_days`: 31日のまま。月をまたぐ間隔(2/20→3/10など)も取りこぼさず、重複は下記の既読管理で除外する
 
 ### 重複排除
 
@@ -58,7 +59,7 @@ Google News RSS(既存の`market_news.py`・`sumo_news.py`と同じ方式)。
 
 | モジュール | 役割 | 実行タイミング |
 |---|---|---|
-| `keyword_watch.py` | Google News RSS検索・`output/keyword_watch.json`出力 | 例: 毎日07:15にバッチ起動、内部で`day_of_month`一致時のみ処理 |
+| `keyword_watch.py` | Google News RSS検索・`output/keyword_watch.json`出力 | 例: 毎日07:15にバッチ起動、内部で`schedule_days`に含まれる日のみ処理 |
 | `keyword_watch_mail.py` | `keyword_watch.json`を読んでメール送信(0件でも送信) | 同上 |
 
 ---

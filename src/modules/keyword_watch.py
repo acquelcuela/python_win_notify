@@ -7,7 +7,9 @@ from modules.market_news import _dedupe, _fetch_google_news
 
 
 JST = timezone(timedelta(hours=9), "JST")
-DEFAULT_DAY_OF_MONTH = 1
+# Every 10 days (user request 2026-10-02 - monthly was too easy to forget).
+# February has no 30th, so it simply gets two runs that month.
+DEFAULT_SCHEDULE_DAYS = [10, 20, 30]
 DEFAULT_LOOKBACK_DAYS = 31
 DEFAULT_MAX_ITEMS = 20
 
@@ -32,10 +34,10 @@ def _load_config(root: Path) -> dict:
 
 def _is_scheduled_today(config: dict, now: datetime) -> bool:
     """main.py's batch_schedule only understands time-of-day + weekday, so
-    the "run once a month" condition lives here instead: every scheduled
-    trigger checks in, and only actually runs on the configured day."""
-    day_of_month = int(config.get("day_of_month", DEFAULT_DAY_OF_MONTH))
-    return now.day == day_of_month
+    the "run on days 10/20/30" condition lives here instead: every scheduled
+    trigger checks in, and only actually runs on the configured days."""
+    schedule_days = config.get("schedule_days") or DEFAULT_SCHEDULE_DAYS
+    return now.day in {int(d) for d in schedule_days}
 
 
 def _load_seen(root: Path) -> list[dict]:
@@ -73,7 +75,7 @@ def run(root: Path) -> None:
             "module": "keyword_watch",
             "generated_at": generated_at,
             "status": "skipped",
-            "reason": f"Not the scheduled day of month (day_of_month={config.get('day_of_month', DEFAULT_DAY_OF_MONTH)}).",
+            "reason": f"Not a scheduled day of month (schedule_days={config.get('schedule_days') or DEFAULT_SCHEDULE_DAYS}).",
         }
         output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         logging.info("[keyword_watch] skipped: not the scheduled day of month")
@@ -117,9 +119,9 @@ def run(root: Path) -> None:
         recent_items.append(item)
     recent_items.sort(key=lambda item: item.get("published_at") or "", reverse=True)
 
-    # Cross-month dedup: only notify about articles not already sent in a
-    # previous run, so a story that stays in the lookback window across two
-    # monthly runs doesn't get repeated.
+    # Cross-run dedup: only notify about articles not already sent in a
+    # previous run, so a story that stays in the 31-day lookback window across
+    # several 10-day runs doesn't get repeated.
     seen_records = _load_seen(root)
     seen_keys = {r.get("key") for r in seen_records}
     new_items = [item for item in recent_items if _seen_key(item) not in seen_keys][:max_items]

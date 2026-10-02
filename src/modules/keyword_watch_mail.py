@@ -62,7 +62,7 @@ def run(root: Path) -> None:
 
     data = _load_json(root / "output" / "keyword_watch.json")
     if not data or data.get("status") != "ok":
-        # keyword_watch also writes status="skipped" on the ~29 non-trigger
+        # keyword_watch also writes status="skipped" on the non-trigger
         # days of the month - that's not "ran and found nothing", so stay
         # silent here rather than sending a misleading "no news" mail every
         # single day.
@@ -96,7 +96,7 @@ def run(root: Path) -> None:
     body = f"""
     <html>
       <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
-        <h2>キーワード月次検索</h2>
+        <h2>キーワード定期検索</h2>
         <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点</div>
         {sections}
       </body>
@@ -128,7 +128,7 @@ def run(root: Path) -> None:
         logging.warning("[keyword_watch_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"キーワード月次検索 {now.strftime('%Y-%m')}"
+    subject = f"キーワード定期検索 {now.strftime('%Y-%m-%d')}"
     try:
         send_html_mail(gmail_address, app_password, mail_to, subject, body)
         logging.info("[keyword_watch_mail] sent %d item(s)", len(items))
