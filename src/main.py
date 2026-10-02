@@ -35,6 +35,7 @@ MODULE_ORDER = [
     "stock_turnover_watch",
     "market_news",
     "news_movers",
+    "stock_x_trends_web_fetch",
     "stock_x_trends",
     "stock_x_trends_eval",
     "ai_summary",
@@ -328,8 +329,16 @@ def load_module_runner(module_name: str):
 
 MODULE_TIMEOUT_SECONDS = 180
 
+# Per-module overrides for modules that legitimately need longer than the
+# default watchdog budget - currently just stock_x_trends_web_fetch, which
+# drives an actual Chrome session (page load + typing + waiting for Grok's
+# web UI to answer) instead of a single fast API call.
+MODULE_TIMEOUT_OVERRIDES = {
+    "stock_x_trends_web_fetch": 650,
+}
 
-def run_module_with_watchdog(name: str, runner, timeout_seconds: int = MODULE_TIMEOUT_SECONDS) -> bool:
+
+def run_module_with_watchdog(name: str, runner, timeout_seconds: int | None = None) -> bool:
     """Runs one module's runner(root=ROOT) in a background thread with a
     timeout, so a single module that hangs (e.g. a stalled network call in a
     library that doesn't honor its own timeout) or raises can't silently take
@@ -338,6 +347,8 @@ def run_module_with_watchdog(name: str, runner, timeout_seconds: int = MODULE_TI
     eventually force-kills the whole process tree, and every later module in
     that slot (including mail_gmail) never ran. Returns True if the module
     completed normally."""
+    if timeout_seconds is None:
+        timeout_seconds = MODULE_TIMEOUT_OVERRIDES.get(name, MODULE_TIMEOUT_SECONDS)
     error_box: list[BaseException] = []
 
     def _target() -> None:

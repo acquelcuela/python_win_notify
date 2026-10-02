@@ -1,6 +1,7 @@
 {
   "batch_schedule": [
     {"time": "05:00", "days": "all", "modules": ["post_x_magazine"]},
+    {"time": "06:30", "modules": ["stock_x_trends_web_fetch"]},
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
       "time": "07:00",
@@ -30,6 +31,7 @@
         "onedrive_check", "disk_usage"
       ]
     },
+    {"time": "22:30", "modules": ["stock_x_trends_web_fetch"]},
     {
       "time": "23:00",
       "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
@@ -45,6 +47,7 @@
     "stock_turnover_watch": true,
     "market_news": true,
     "news_movers": true,
+    "stock_x_trends_web_fetch": true,
     "stock_x_trends": true,
     "stock_x_trends_eval": true,
     "ai_summary": true,
@@ -79,7 +82,14 @@
   "stock_x_trends": {
     "enabled": true,
     "model": "grok-4.3",
-    "max_tokens": 1000
+    "max_tokens": 1000,
+    "source": "web",
+    "web_cache_max_age_minutes": 120
+  },
+  "grok_web": {
+    "window_limit": 10,
+    "window_hours": 2,
+    "daily_limit": null
   },
   "stock_turnover_watch": {
     "top_n": 40,

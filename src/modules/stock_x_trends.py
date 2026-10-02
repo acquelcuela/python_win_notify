@@ -10,6 +10,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules.gemini_pricing import USD_TO_JPY
 from modules.news_movers import (
     _alias_file_path,
     _data_file_path,
@@ -25,6 +26,48 @@ MAX_COMMON_KEYWORDS = 10
 MAX_FINDINGS = 8
 HISTORY_DIR_NAME = "history"
 HISTORY_RETENTION_DAYS = 30
+# Per-run files (output/history/stock_x_trends_runs/) are kept indefinitely.
+RUNS_DIR_NAME = "stock_x_trends_runs"
+
+# Written by stock_x_trends_web_fetch.py when stock_x_trends.source ==
+# "web" - that module drives an actual browser session (slow, so it runs
+# on its own earlier schedule slot) and caches its result here for this
+# module to just read.
+WEB_CACHE_PATH = Path("state") / "stock_x_trends_web_cache.json"
+# The fetch slot runs 30 min before each stock_x_trends slot, so anything
+# older than this is a previous cycle's leftover, not this cycle's fetch.
+DEFAULT_WEB_CACHE_MAX_AGE_MINUTES = 120
+
+# xAI's own authoritative per-call cost, straight from the API response
+# (usage.cost_in_usd_ticks / COST_TICKS_PER_USD) - covers token pricing and
+# the x_search tool's per-post/per-profile fees together, so there's no need
+# to reimplement xAI's pricing table the way gemini_pricing.py does for
+# Gemini. Verified against a live call: 1559 input tokens (128 cached),
+# 201 output tokens, 0 sources -> cost_in_usd_ticks=23168500, matching
+# (1431*1.25 + 128*0.20 + 201*2.50)/1e6 = $0.00231685 at ticks/1e10.
+COST_TICKS_PER_USD = 1e10
+
+
+class GrokUsageTracker:
+    """Accumulates cost across one or more Grok calls within a single
+    module run, so the caller can report a total (mirrors
+    gemini_pricing.GeminiUsageTracker's role for Gemini calls)."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+        self.cost_usd = 0.0
+        self.num_sources_used = 0
+
+    def add(self, usage: dict | None) -> None:
+        if not usage:
+            return
+        self.call_count += 1
+        self.cost_usd += float(usage.get("cost_in_usd_ticks") or 0) / COST_TICKS_PER_USD
+        self.num_sources_used += int(usage.get("num_sources_used") or 0)
+
+    @property
+    def cost_jpy(self) -> float:
+        return self.cost_usd * USD_TO_JPY
 
 
 def _load_json(path: Path) -> dict | list | None:
@@ -142,7 +185,7 @@ JSON形式:
 """.strip()
 
 
-def _call_grok(api_key: str, model: str, prompt: str, max_tokens: int) -> dict:
+def _call_grok(api_key: str, model: str, prompt: str, max_tokens: int) -> tuple[dict, dict]:
     body = {
         "model": model,
         "input": [
@@ -176,7 +219,7 @@ def _call_grok(api_key: str, model: str, prompt: str, max_tokens: int) -> dict:
                 text += str(part.get("text") or part.get("output_text") or "")
     if not text:
         raise RuntimeError("Grok API returned empty content.")
-    return _extract_json(text)
+    return _extract_json(text), (payload.get("usage") or {})
 
 
 def _normalize_payload(data: dict) -> dict:
@@ -217,7 +260,12 @@ def _normalize_payload(data: dict) -> dict:
     }
 
 
-def _merge_payload(base: dict, extra: dict) -> dict:
+def _merge_payload(base: dict, extra: dict, cap: bool = True) -> dict:
+    """Merges two payloads, base first, dropping duplicate keywords and
+    duplicate (ticker, name) findings. `cap` trims each list to the per-run
+    limits - right for combining one run's search passes, but the 07:00
+    overnight+morning merge passes cap=False: with the cap, a full 23:00
+    list left no room and every new morning finding was silently dropped."""
     merged_keywords: list[str] = []
     for source in (
         base.get("common_keywords") or [],
@@ -246,12 +294,17 @@ def _merge_payload(base: dict, extra: dict) -> dict:
         [base.get("theme_findings") or [], extra.get("theme_findings") or []]
     )
 
+    if cap:
+        merged_keywords = merged_keywords[:MAX_COMMON_KEYWORDS]
+        merged_stock_findings = merged_stock_findings[:MAX_FINDINGS]
+        merged_theme_findings = merged_theme_findings[:MAX_FINDINGS]
+
     return {
-        "common_keywords": merged_keywords[:MAX_COMMON_KEYWORDS],
-        "stock_findings": merged_stock_findings[:MAX_FINDINGS],
-        "theme_findings": merged_theme_findings[:MAX_FINDINGS],
-        "discovery_findings": merged_theme_findings[:MAX_FINDINGS],
-        "trending_keywords": merged_keywords[:MAX_COMMON_KEYWORDS],
+        "common_keywords": merged_keywords,
+        "stock_findings": merged_stock_findings,
+        "theme_findings": merged_theme_findings,
+        "discovery_findings": merged_theme_findings,
+        "trending_keywords": merged_keywords,
         "notable_posts": merged_theme_findings[:5],
     }
 
@@ -299,13 +352,17 @@ def _search_passes() -> list[tuple[str, list[str], str]]:
     ]
 
 
-def _run_grok_searches(api_key: str, model: str, max_tokens: int, context: str) -> tuple[dict, list[dict]]:
+def _run_grok_searches(
+    api_key: str, model: str, max_tokens: int, context: str, usage_tracker: GrokUsageTracker
+) -> tuple[dict, list[dict]]:
     passes_used: list[dict] = []
     merged: dict | None = None
 
     for index, (name, search_terms, focus) in enumerate(_search_passes(), start=1):
         prompt = _build_prompt(focus, search_terms, context)
-        data = _normalize_payload(_call_grok(api_key, model, prompt, max_tokens))
+        raw, usage = _call_grok(api_key, model, prompt, max_tokens)
+        usage_tracker.add(usage)
+        data = _normalize_payload(raw)
         passes_used.append(
             {
                 "name": name,
@@ -421,6 +478,180 @@ def _archive_history(root: Path, payload: dict) -> None:
             existing.unlink(missing_ok=True)
 
 
+def _web_cache_skip_reason(cache_payload, max_age_minutes: int | None) -> str | None:
+    if not isinstance(cache_payload, dict) or not cache_payload.get("data"):
+        return f"no cached web data at {WEB_CACHE_PATH} - run stock_x_trends_web_fetch first."
+    if max_age_minutes is None:
+        return None
+    # A failed stock_x_trends_web_fetch run (Chrome closed, Grok logged out or
+    # rate-limited, ...) leaves the previous cache in place - without this the
+    # report would silently present that older cycle's X trends as current.
+    try:
+        cached_at = datetime.fromisoformat(str(cache_payload.get("generated_at")))
+    except ValueError:
+        return f"web cache at {WEB_CACHE_PATH} has no valid generated_at."
+    age_minutes = (datetime.now(JST) - cached_at).total_seconds() / 60
+    if age_minutes > max_age_minutes:
+        return (
+            f"web cache is stale ({age_minutes:.0f} min old, limit {max_age_minutes} min; "
+            f"generated at {cache_payload.get('generated_at')}) - stock_x_trends_web_fetch likely failed."
+        )
+    return None
+
+
+def _from_web_cache(root: Path, generated_at: str, max_age_minutes: int | None) -> dict:
+    """stock_x_trends.source == "web": this run's own payload, read from the
+    cache stock_x_trends_web_fetch.py left behind instead of calling the Grok
+    API - no API key or cost here, but this only has data once that separate,
+    slower module has run, and a cache older than max_age_minutes is refused
+    rather than reused."""
+    cache_payload = _load_json(root / WEB_CACHE_PATH)
+    skip_reason = _web_cache_skip_reason(cache_payload, max_age_minutes)
+    if skip_reason:
+        logging.warning("[stock_x_trends] no data this run (source=web): %s", skip_reason)
+        return {
+            "module": "stock_x_trends",
+            "generated_at": generated_at,
+            "status": "skipped",
+            "source": "web",
+            "reason": skip_reason,
+            "data": None,
+        }
+
+    data = _verify_findings(root, cache_payload["data"])
+    logging.info(
+        "[stock_x_trends] (web) collected %s common keywords, %s stock findings and %s theme findings "
+        "from cache generated at %s",
+        len(data["common_keywords"]),
+        len(data["stock_findings"]),
+        len(data["theme_findings"]),
+        cache_payload.get("generated_at"),
+    )
+    return {
+        "module": "stock_x_trends",
+        "generated_at": generated_at,
+        "status": "ok",
+        "source": "web",
+        "web_cache_generated_at": cache_payload.get("generated_at"),
+        "cost_jpy": 0.0,
+        "data": data,
+    }
+
+
+def _from_api(root: Path, generated_at: str, api_key: str, model: str, max_tokens: int) -> dict:
+    """stock_x_trends.source == "api": this run's own payload from the Grok API."""
+    context = _market_context(root)
+    usage_tracker = GrokUsageTracker()
+    try:
+        data, passes_used = _run_grok_searches(api_key, model, max_tokens, context, usage_tracker)
+        data = _verify_findings(root, data)
+    except Exception as exc:
+        logging.error("[stock_x_trends] failed: %s", exc)
+        return {
+            "module": "stock_x_trends",
+            "generated_at": generated_at,
+            "status": "error",
+            "source": "api",
+            "model": model,
+            "cost_jpy": round(usage_tracker.cost_jpy, 3),
+            "error": str(exc),
+            "data": None,
+        }
+    logging.info(
+        "[stock_x_trends] collected %s common keywords, %s stock findings and %s theme findings using %s pass(es) "
+        "(cost=%.3f JPY, %s X source(s) used)",
+        len(data["common_keywords"]),
+        len(data["stock_findings"]),
+        len(data["theme_findings"]),
+        len(passes_used),
+        usage_tracker.cost_jpy,
+        usage_tracker.num_sources_used,
+    )
+    return {
+        "module": "stock_x_trends",
+        "generated_at": generated_at,
+        "status": "ok",
+        "source": "api",
+        "model": model,
+        "search_passes": passes_used,
+        "cost_jpy": round(usage_tracker.cost_jpy, 3),
+        "num_sources_used": usage_tracker.num_sources_used,
+        "data": data,
+    }
+
+
+def _runs_dir(root: Path) -> Path:
+    return root / "output" / HISTORY_DIR_NAME / RUNS_DIR_NAME
+
+
+def _save_run(root: Path, payload: dict, schedule_key: str) -> Path:
+    """Every run's own (un-merged) result gets its own file, failures
+    included - nothing overwrites it, so the 07:00 merge can always find the
+    previous night's list, and past cycles stay inspectable."""
+    runs_dir = _runs_dir(root)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    started = datetime.fromisoformat(payload["generated_at"]).astimezone(JST)
+    slot_label = schedule_key.replace(":", "") if schedule_key else f"{started:%H%M%S}_manual"
+    path = runs_dir / f"stock_x_trends_{started:%Y%m%d}_{slot_label}.json"
+    path.write_text(
+        json.dumps({**payload, "schedule_key": schedule_key or None}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _overnight_base(root: Path, current_run: Path) -> tuple[Path, dict] | None:
+    """For a 07:00 run: the latest successful 23:00 run since the previous
+    07:00 run - so Monday morning still picks up Friday night, but a failed
+    23:00 never falls back to an older cycle's list."""
+    for path in sorted(_runs_dir(root).glob("stock_x_trends_*.json"), reverse=True):
+        if path.name >= current_run.name:
+            continue
+        run_payload = _load_json(path)
+        if not isinstance(run_payload, dict):
+            continue
+        schedule_key = run_payload.get("schedule_key")
+        if schedule_key == "07:00":
+            return None
+        if schedule_key == "23:00" and run_payload.get("status") == "ok" and run_payload.get("data"):
+            return path, run_payload
+    return None
+
+
+def _combine_with_overnight(root: Path, own: dict, run_path: Path) -> dict:
+    """Twice-daily cycle: 23:00 starts a fresh list (the overnight picks),
+    07:00 adds the morning's findings to that same night's list with
+    duplicates removed and no cap, so the 09:30/12:15 reports - which don't
+    re-fetch - keep showing the combined set until 23:00 resets it. If the
+    morning fetch failed, the night's list is still published on its own."""
+    base = _overnight_base(root, run_path)
+    if base is None:
+        return own
+    base_path, base_payload = base
+    if own.get("status") == "ok":
+        data = _merge_payload(base_payload["data"], own["data"], cap=False)
+        extra = {}
+    else:
+        data = base_payload["data"]
+        extra = {
+            "morning_status": own.get("status"),
+            "morning_reason": own.get("reason") or own.get("error"),
+        }
+        logging.warning(
+            "[stock_x_trends] morning fetch %s - publishing last night's list only (%s)",
+            own.get("status"),
+            base_path.name,
+        )
+    return {
+        **own,
+        "status": "ok",
+        "merged_with_previous": True,
+        "previous_run": base_path.name,
+        **extra,
+        "data": data,
+    }
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -431,6 +662,7 @@ def run(root: Path) -> None:
     enabled = bool(config.get("enabled", False))
     model = str(config.get("model") or DEFAULT_MODEL)
     max_tokens = int(config.get("max_tokens", 1000))
+    source = str(config.get("source") or "api").strip().lower()
     api_key = os.getenv("GROK_API_KEY", "").strip()
 
     if not enabled:
@@ -445,62 +677,32 @@ def run(root: Path) -> None:
         logging.info("[stock_x_trends] skipped: disabled in config.json")
         return
 
-    if not api_key:
-        payload = {
+    if source == "web":
+        max_age = config.get("web_cache_max_age_minutes", DEFAULT_WEB_CACHE_MAX_AGE_MINUTES)
+        own = _from_web_cache(root, generated_at, int(max_age) if max_age is not None else None)
+    elif not api_key:
+        logging.info("[stock_x_trends] no data this run: GROK_API_KEY is not set")
+        own = {
             "module": "stock_x_trends",
             "generated_at": generated_at,
             "status": "skipped",
+            "source": "api",
             "reason": "GROK_API_KEY is not set.",
             "data": None,
         }
-        output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.info("[stock_x_trends] skipped: GROK_API_KEY is not set")
-        return
+    else:
+        own = _from_api(root, generated_at, api_key, model, max_tokens)
 
-    context = _market_context(root)
-
-    # Twice-daily cycle: 23:00 always starts a fresh list (today's overnight
-    # picks), 07:00 adds the morning's new findings on top of that same list
-    # with duplicates removed, so the 09:30/12:15 reports - which don't
-    # re-fetch - keep showing that combined set until 23:00 resets it again.
     schedule_key = os.getenv("BATCH_SCHEDULE_KEY", "").strip()
-    merged_with_previous = False
-
-    try:
-        data, passes_used = _run_grok_searches(api_key, model, max_tokens, context)
-        data = _verify_findings(root, data)
-        if schedule_key == "07:00":
-            previous_payload = _load_json(output_path)
-            if isinstance(previous_payload, dict) and previous_payload.get("status") == "ok" and previous_payload.get("data"):
-                data = _merge_payload(previous_payload["data"], data)
-                merged_with_previous = True
-        payload = {
-            "module": "stock_x_trends",
-            "generated_at": generated_at,
-            "status": "ok",
-            "model": model,
-            "search_passes": passes_used,
-            "merged_with_previous": merged_with_previous,
-            "data": data,
-        }
+    run_path = _save_run(root, own, schedule_key)
+    payload = _combine_with_overnight(root, own, run_path) if schedule_key == "07:00" else own
+    if payload.get("merged_with_previous"):
         logging.info(
-            "[stock_x_trends] collected %s common keywords, %s stock findings and %s theme findings using %s pass(es)%s",
-            len(data["common_keywords"]),
-            len(data["stock_findings"]),
-            len(data["theme_findings"]),
-            len(passes_used),
-            " (merged with previous cycle)" if merged_with_previous else "",
+            "[stock_x_trends] combined with %s: %s stock findings, %s theme findings",
+            payload["previous_run"],
+            len(payload["data"]["stock_findings"]),
+            len(payload["data"]["theme_findings"]),
         )
-    except Exception as exc:
-        payload = {
-            "module": "stock_x_trends",
-            "generated_at": generated_at,
-            "status": "error",
-            "model": model,
-            "error": str(exc),
-            "data": None,
-        }
-        logging.error("[stock_x_trends] failed: %s", exc)
 
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     if payload.get("status") == "ok":
