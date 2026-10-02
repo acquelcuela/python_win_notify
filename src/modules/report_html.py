@@ -277,16 +277,21 @@ def _stock_range_hit_rate_text(hit_rate: dict) -> str:
     return f"モメンタム型 {_text('momentum')} / リバーサル型 {_text('reversal')}"
 
 
-# "特別注目銘柄": tickers whose recorded stock_range hit rate has exceeded
-# 65% (n>=8, to avoid flagging on pure small-sample noise) - computed live
-# from state/stock_range_predictions.json on every render rather than a
-# static curated list, per user request 2026-09-17, so membership stays
-# current as more days accumulate and a ticker can drop back out again.
-SPECIAL_WATCH_MIN_N = 8
-SPECIAL_WATCH_HIT_RATE_PCT = 65.0
+# "特別注目銘柄": (type, ticker) pairs whose recorded stock_range hit rate
+# exceeds SPECIAL_WATCH_HIT_RATE_PCT with at least SPECIAL_WATCH_MIN_N
+# evaluations of that type - computed live from
+# state/stock_range_predictions.json on every render (user request
+# 2026-09-17) so membership stays current and a ticker can drop back out.
+# Momentum and reversal are counted separately since a ticker can do well as
+# one and poorly as the other. The thresholds are meant to be re-tuned about
+# monthly (user request 2026-10-02); at that time n>=10 / >50% flagged 17 of
+# 32 eligible pairs, and a walk-forward check had them hitting 57.8% vs
+# 50.3% for the rest - promising but not yet clearly beyond noise.
+SPECIAL_WATCH_MIN_N = 10
+SPECIAL_WATCH_HIT_RATE_PCT = 50.0
 
 
-def _special_watch_tickers(root: Path) -> dict[str, float]:
+def _special_watch_tickers(root: Path) -> dict[tuple[str, str], tuple[int, int]]:
     path = root / "state" / "stock_range_predictions.json"
     if not path.exists():
         return {}
@@ -294,22 +299,23 @@ def _special_watch_tickers(root: Path) -> dict[str, float]:
         records = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
-    by_ticker: dict[str, list[bool]] = defaultdict(list)
+    by_key: dict[tuple[str, str], list[bool]] = defaultdict(list)
     for r in records:
-        if r.get("evaluated") and r.get("hit") is not None and r.get("ticker"):
-            by_ticker[r["ticker"]].append(bool(r["hit"]))
+        if r.get("evaluated") and r.get("hit") is not None and r.get("ticker") and r.get("type"):
+            by_key[(r["type"], r["ticker"])].append(bool(r["hit"]))
     result = {}
-    for ticker, hits in by_ticker.items():
+    for (kind, ticker), hits in by_key.items():
         n = len(hits)
         if n < SPECIAL_WATCH_MIN_N:
             continue
-        rate = sum(hits) / n * 100
-        if rate > SPECIAL_WATCH_HIT_RATE_PCT:
-            result[ticker] = rate
+        if sum(hits) / n * 100 > SPECIAL_WATCH_HIT_RATE_PCT:
+            result[(kind, ticker)] = (sum(hits), n)
     return result
 
 
-def _stock_range_candidate_cards(candidates: list[dict], special_watch: dict[str, float]) -> str:
+def _stock_range_candidate_cards(
+    candidates: list[dict], kind: str, special_watch: dict[tuple[str, str], tuple[int, int]]
+) -> str:
     if not candidates:
         return '<div class="muted">該当銘柄なし</div>'
     cards = []
@@ -338,16 +344,17 @@ def _stock_range_candidate_cards(candidates: list[dict], special_watch: dict[str
             <div class="muted">30日レンジの{html.escape(str(position_pct))}%地点</div>
             """
         change_text, change_color = _fmt_change(candidate.get("change"), candidate.get("change_pct", 0))
-        special_rate = special_watch.get(candidate.get("ticker"))
+        special = special_watch.get((kind, candidate.get("ticker")))
         card_style = (
             "border:2px solid #f59e0b;background:#fffbeb;"
-            if special_rate is not None
+            if special is not None
             else ""
         )
         special_badge = (
             f'<span style="background:#f59e0b;color:#fff;font-size:11px;padding:1px 6px;'
-            f'border-radius:10px;margin-left:6px;">⭐特別注目 的中率{special_rate:.0f}%</span>'
-            if special_rate is not None
+            f'border-radius:10px;margin-left:6px;">⭐特別注目 的中{special[0]}/{special[1]}'
+            f'({special[0] / special[1] * 100:.0f}%)</span>'
+            if special is not None
             else ""
         )
         cards.append(
@@ -454,12 +461,12 @@ def _stock_range_score_section(root: Path) -> str:
       <div class="section-title">30日レンジ 本日の上昇候補(機械的スコアリング・投資助言ではありません)</div>
       <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝06:45の市場が開く前に算出し、本日の値動きを対象にした候補です。終日この結果を表示します)</div>
       <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
-      <div class="muted">⭐特別注目銘柄: これまでの的中率が65%を超えた銘柄(n≥8)。カードを金色で強調表示します。</div>
+      <div class="muted">⭐特別注目銘柄: 同じ型(モメンタム/リバーサル)で{SPECIAL_WATCH_MIN_N}回以上候補に出て、的中率が{SPECIAL_WATCH_HIT_RATE_PCT:.0f}%を超えた銘柄。カードを金色で強調表示します(基準は月1回程度見直し)。</div>
       {market_note}
       <h3>モメンタム型(上昇継続を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], special_watch)}
+      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], "momentum", special_watch)}
       <h3>リバーサル型(反発を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], special_watch)}
+      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], "reversal", special_watch)}
       <div class="muted" style="margin-top:8px;">これまでの的中率(当日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
     </section>
     """
