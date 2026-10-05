@@ -64,7 +64,7 @@
   ・内部記録: output/radio_guest_check.json(直近の結果)、
     state/radio_guest_check_state.json(前回成功日)
 
-■ 設定(config.json の radio_guest_check)
+■ 設定(config.json の radio_guest_check。followed_programs だけは個人情報なので config.local.json(git管理外)に置く)
   interval_days      : 3    何日おきに実行するか
   days_ahead         : 4    本日から何日後までを対象にするか(4 = 5日分)
   followed_programs  : フォロー中の番組リスト(「番組名／放送局 放送時間」形式)

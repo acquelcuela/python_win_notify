@@ -46,3 +46,7 @@ src/note_drafts/queue/*
 
 # note writing/posting workspace (personal content incl. portfolio; moved from inbox/test_cowork_note 2026-10-04)
 note/
+
+# Personal values (local paths, account names, personal lists) merged over src/config.json;
+# see src/config.local.example.json
+src/config.local.json

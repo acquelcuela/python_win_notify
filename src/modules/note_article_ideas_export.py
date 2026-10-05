@@ -4,9 +4,10 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules.local_config import load_config
+
 
 JST = timezone(timedelta(hours=9), "JST")
-DEFAULT_TARGET_DIR = r"C:\Users\user\OneDrive - LIFEWORK\send@OneDrive2027"
 
 
 def _load_json(path: Path) -> dict | None:
@@ -74,8 +75,11 @@ def run(root: Path) -> None:
         return
 
     config = _load_config(root)
-    target_dir = Path(config.get("export_dir") or DEFAULT_TARGET_DIR)
-    if not target_dir.exists():
+    # Defaults to the same OneDrive folder onedrive_check watches, which is
+    # a personal path kept in config.local.json (gitignored).
+    export_dir = config.get("export_dir") or load_config(root).get("onedrive_check", {}).get("path")
+    target_dir = Path(export_dir or "")
+    if not export_dir or not target_dir.exists():
         result = {
             "module": "note_article_ideas_export",
             "generated_at": generated_at,

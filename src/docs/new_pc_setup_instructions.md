@@ -34,6 +34,7 @@ git cloneしたディレクトリに向けて、以下を展開したアーカ�
 | コピー元(展開したtar.gz内) | コピー先(git cloneしたディレクトリ) | 内容 |
 |---|---|---|
 | `src/.env` | `src/.env` | Gmail・Gemini・Grok等のAPIキー・認証情報(最優先・必須) |
+| `src/config.local.json` | `src/config.local.json` | 個人設定(OneDriveのパス・noteのアカウント名・ラジオのフォロー番組など、git管理外) |
 | `src/state/` 一式 | `src/state/` | 実行履歴・的中率ログ・既読管理など |
 | `src/state/note_articles.json` | `src/state/note_articles.json` | (↑に含まれるはずだが念のため個別確認) ユーザー提供のnote投稿一覧 |
 | `src/output/history/` | `src/output/history/` | Xトレンド・大相撲ニュースのアーカイブ |
@@ -58,7 +59,7 @@ certifi。他は標準ライブラリ)をインストールする。Python本体
 - `files1/setup_task.ps1`内の`$projectPath = "C:\batch_stock_files"`
   → このPCでの実際の配置先フォルダパスに書き換える
 - `config.json`・`marketplace_watch_config.json`・`note_article_ideas_config.json`
-  等の中にある`C:\Users\user\OneDrive - LIFEWORK\send@OneDrive2027`
+  等の中にある`C:\Users\user\OneDrive - <組織名>\send@OneDrive2027`
   (OneDriveの送信先フォルダパス)
   → このPCの実際のOneDriveパスと一致しているか確認し、違えば修正する
 
@@ -75,7 +76,7 @@ certifi。他は標準ライブラリ)をインストールする。Python本体
 - 任意のスケジュールを強制実行して確認したい場合:
   `.venv\Scripts\python.exe main.py --force --schedule <HH:MM>`
   (例: `--force --schedule 22:00`)
-- 実際にメールが届くか、`C:\Users\user\OneDrive - LIFEWORK\send@OneDrive2027`
+- 実際にメールが届くか、`C:\Users\user\OneDrive - <組織名>\send@OneDrive2027`
   相当のフォルダにファイルが配置されるかも確認する
 
 ## 注意

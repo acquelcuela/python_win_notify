@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from modules.gemini_pricing import GeminiUsageTracker
+from modules.local_config import load_config
 from modules.mail_gmail import send_html_mail
 from modules.post_x_note import (
     _build_result_payload,
@@ -46,7 +47,9 @@ class SingleLineTweetGenerated(Exception):
 
 
 JST = timezone(timedelta(hours=9), "JST")
-DEFAULT_NOTE_CREATOR = "fukuoka_dividend"
+# The note creator id is an account name, so it is set in config.local.json
+# (gitignored) rather than here or in config.json.
+DEFAULT_NOTE_CREATOR = ""
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
 X_MAX_CHARS = 280
 THREAD_PARTS_COUNT = 5  # 1 primary post + 4 replies (last reply promotes other magazines)
@@ -167,8 +170,7 @@ def _send_post_notification(
 
 
 def _load_config(root: Path) -> dict:
-    payload = _load_json(root / "config.json")
-    return payload if isinstance(payload, dict) else {}
+    return load_config(root)
 
 
 def _module_config(root: Path) -> dict:

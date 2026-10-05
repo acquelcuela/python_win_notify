@@ -21,6 +21,7 @@ pullでは来ないものが複数あるため、それらは個別にコピー�
 | 項目 | パス | 無いとどうなるか |
 |---|---|---|
 | 環境変数・APIキー | `src/.env` | 全モジュールが即エラー(必須、最優先) |
+| 個人設定 | `src/config.local.json` | OneDrive確認・note記事案の書き出し・X投稿・ラジオのフォロー番組が動かない |
 | 実行履歴・的中率ログ等 | `src/state/` 一式 | 履歴がリセットされる(30日レンジ/Xトレンドの的中率分析が消える、keyword_watch・marketplace_watchの既読管理も初回扱いに戻る) |
 | note投稿一覧(ユーザー提供分) | `src/state/note_articles.json` | note構想生成が既出記事と気づかず重複提案する可能性 |
 | Xトレンド・大相撲ニュースのアーカイブ | `src/output/history/` | 月次まとめ・答え合わせに使う過去データが消える |
@@ -33,7 +34,7 @@ state/以下は「リセットされてもいい」なら省略してよい(履�
 - `files1/setup_task.ps1`内の`$projectPath = "C:\batch_stock_files"`
   → 移行先の実際の配置フォルダパスに変更する
 - `config.json`・各種`*_config.json`内のOneDriveパス
-  (`C:\Users\user\OneDrive - LIFEWORK\send@OneDrive2027`)
+  (`C:\Users\user\OneDrive - <組織名>\send@OneDrive2027`)
   → 移行先PCのWindowsユーザー名・OneDriveフォルダ構成が違う場合は要修正
   (該当箇所: `marketplace_watch_config.json`の`export_dir`相当、
   `note_article_ideas_config.json`の`export_dir`、`onedrive_check`関連の

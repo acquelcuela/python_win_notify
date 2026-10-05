@@ -18,9 +18,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from modules.local_config import load_config
+
 
 JST = timezone(timedelta(hours=9), "JST")
-DEFAULT_NOTE_CREATOR = "fukuoka_dividend"
+# The note creator id is an account name, so it is set in config.local.json
+# (gitignored) rather than here or in config.json.
+DEFAULT_NOTE_CREATOR = ""
 DEFAULT_HISTORY_DAYS = 5
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
 X_MAX_CHARS = 280
@@ -45,8 +49,7 @@ def _dump_json(path: Path, payload: dict | list) -> None:
 
 
 def _load_config(root: Path) -> dict:
-    payload = _load_json(root / "config.json")
-    return payload if isinstance(payload, dict) else {}
+    return load_config(root)
 
 
 def _module_config(root: Path) -> dict:

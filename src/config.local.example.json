@@ -1,0 +1,26 @@
+{
+  "onedrive_check": {
+    "path": "C:\\Users\\<you>\\OneDrive\\<送信用フォルダ>"
+  },
+  "post_x_magazine": {
+    "creator": "<noteのクリエイターID>",
+    "magazines": [
+      {
+        "id": "example_magazine",
+        "name": "マガジン名",
+        "tweet_id": "",
+        "tweet_url": "",
+        "article_keys": [],
+        "enabled": true
+      }
+    ]
+  },
+  "post_x_note": {
+    "creator": "<noteのクリエイターID>"
+  },
+  "radio_guest_check": {
+    "followed_programs": [
+      "番組名／放送局 放送時間"
+    ]
+  }
+}

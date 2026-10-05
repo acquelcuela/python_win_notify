@@ -11,6 +11,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from modules.local_config import load_config as load_local_config
+
 
 JST = timezone(timedelta(hours=9), "JST")
 ROOT = Path(__file__).resolve().parent
@@ -112,7 +114,8 @@ def parse_args() -> argparse.Namespace:
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Config file was not found: {CONFIG_PATH}")
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    # config.local.json (gitignored, personal values) is merged over config.json.
+    return load_local_config(ROOT)
 
 
 def get_window_minutes() -> int:

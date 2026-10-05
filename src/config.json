@@ -93,27 +93,7 @@
   },
   "radio_guest_check": {
     "interval_days": 3,
-    "days_ahead": 4,
-    "followed_programs": [
-      "TOKYO SPEAKEASY／TOKYO FM 25:00",
-      "SING LIKE TALKING 佐藤竹善のアンダンテ／interfm 20:30",
-      "シアーミュージック presents しらスタのボイトレディオ／TOKYO FM 21:00",
-      "マヂカルラブリーのオールナイトニッポン0(ZERO)／KBCラジオ 27:00",
-      "コエトワ／OBCラジオ大阪 22:00",
-      "DOMOTOのどんなもんヤ！／文化放送 25:30",
-      "OLDIES GOODIES／e-radio FM滋賀 12:00",
-      "広瀬すずの「よはくじかん」／FM FUKUOKA 15:30",
-      "リリー・フランキー「スナックラジオ」／FM長崎 16:00",
-      "川島明 そもそもの話／FM長崎 17:00",
-      "三菱地所レジデンス Sparkle Life／TOKYO FM 18:30",
-      "錦鯉・渡辺隆の深夜、オヂさんは大胆に／文化放送 27:30",
-      "目覚めのウルフ／TBSラジオ 07:00",
-      "木村拓哉 Flow／FM FUKUOKA 11:30",
-      "CHINTAI presents きゃりーぱみゅぱみゅ Chapter #0 〜Touch Your Heart〜／FM FUKUOKA 12:30",
-      "SOKOKOKOTO／KBCラジオ 24:00",
-      "ギュウゾウと一色萌の雷ヘッドライナー／RADIO BERRY 24:30",
-      "サンセルモ presents 結婚式は あいのなかで"
-    ]
+    "days_ahead": 4
   },
   "note_draft_post": {
     "run_within_hours_before_weekly_reset": 24,
@@ -270,12 +250,8 @@
     "max_items": 15,
     "lookback_hours": 14
   },
-  "onedrive_check": {
-    "path": "C:\\Users\\user\\OneDrive - LIFEWORK\\send@OneDrive2027"
-  },
   "post_x_magazine": {
     "enabled": true,
-    "creator": "fukuoka_dividend",
     "history_days": 5,
     "rotation_state_file": "state/post_x_magazine_rotation.json",
     "history_file": "state/post_x_magazine_history.json",
@@ -284,53 +260,7 @@
     "exclude_file": "state/post_x_magazine_exclude_urls.txt",
     "exclude_keys_file": "state/post_x_magazine_exclude_keys.txt",
     "model": "gemini-3.1-flash-lite",
-    "max_pages": 50,
-    "magazines": [
-      {
-        "id": "high_dividend_review",
-        "name": "高配当株レビュー",
-        "tweet_id": "",
-        "tweet_url": "",
-        "article_keys": [],
-        "enabled": true
-      },
-      {
-        "id": "etf_index",
-        "name": "ETF・インデックス",
-        "tweet_id": "",
-        "tweet_url": "",
-        "article_keys": [],
-        "enabled": true
-      },
-      {
-        "id": "fire_living",
-        "name": "FIRE・配当生活",
-        "tweet_id": "2075407380968546351",
-        "tweet_url": "https://x.com/fuk_dividend/status/2075407380968546351",
-        "article_keys": [
-          "n098694fbc8d5",
-          "nb9b1676469bd",
-          "nd5e169c3c974"
-        ],
-        "enabled": true
-      },
-      {
-        "id": "tax_inheritance",
-        "name": "税金・相続",
-        "tweet_id": "",
-        "tweet_url": "",
-        "article_keys": [],
-        "enabled": true
-      },
-      {
-        "id": "portfolio_rules",
-        "name": "ポートフォリオ設計",
-        "tweet_id": "",
-        "tweet_url": "",
-        "article_keys": [],
-        "enabled": true
-      }
-    ]
+    "max_pages": 50
   },
   "watchlist": {
     "tickers": [

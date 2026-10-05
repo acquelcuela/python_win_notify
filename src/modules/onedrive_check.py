@@ -4,22 +4,11 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from modules.local_config import load_config
 from modules.mail_gmail import send_html_mail
 
 
 JST = timezone(timedelta(hours=9), "JST")
-DEFAULT_TARGET_DIR = r"C:\Users\user\OneDrive - LIFEWORK\send@OneDrive2027"
-
-
-def _load_config(root: Path) -> dict:
-    path = root / "config.json"
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        logging.warning("[onedrive_check] config.json is invalid; default onedrive_check settings used.")
-        return {}
 
 
 def _fmt_size(num_bytes: int) -> str:
@@ -38,10 +27,12 @@ def run(root: Path) -> None:
     now = datetime.now(JST)
     generated_at = now.isoformat()
 
-    config = _load_config(root).get("onedrive_check", {})
-    target_dir = Path(config.get("path") or DEFAULT_TARGET_DIR)
+    # onedrive_check.path is a personal local path, so it lives in
+    # config.local.json (gitignored) rather than config.json.
+    config = load_config(root).get("onedrive_check", {})
+    target_dir = Path(config.get("path") or "")
 
-    if not target_dir.exists():
+    if not config.get("path") or not target_dir.exists():
         result = {
             "module": "onedrive_check",
             "generated_at": generated_at,

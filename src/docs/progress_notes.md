@@ -115,7 +115,7 @@ Dockerファイルは`src`から削除した:
 初回セットアップ:
 
 ```cmd
-cd /d "C:\Users\user\OneDrive - LIFEWORK\data@OneDrive\kaeru\ai_other_cli_2026\ai_agent_win_notify_cron\src"
+cd /d "C:\Users\user\OneDrive - <組織名>\data@OneDrive\kaeru\ai_other_cli_2026\ai_agent_win_notify_cron\src"
 setup_windows.bat
 ```
 
@@ -128,7 +128,7 @@ setup_windows.bat
 スケジュール実行:
 
 ```text
-C:\Users\user\OneDrive - LIFEWORK\data@OneDrive\kaeru\ai_other_cli_2026\ai_agent_win_notify_cron\src\run.bat
+C:\Users\user\OneDrive - <組織名>\data@OneDrive\kaeru\ai_other_cli_2026\ai_agent_win_notify_cron\src\run.bat
 ```
 
 `run.bat`は`src\.venv`が存在することを前提とする。
@@ -449,7 +449,7 @@ Geminiに渡す重要な前提:
   小さな問いかけテーブルを使う)。
 - 投稿5を新設: プロフィール固定ツイート経由で他のマガジンへ誘導する短い
   クロスプロモーション
-  (固定ツイート自体がリンクしているのは`https://note.com/fukuoka_dividend/magazines`。
+  (固定ツイート自体がリンクしているのは`https://note.com/<noteのクリエイターID>/magazines`。
   スレッド内の投稿自体は既存の「スレッド本文にURLを入れない」ルールに従い
   URLなしのまま、固定ツイートを見てほしいと案内するだけ)。ハッシュタグは
   最後の投稿に付く仕様のため、投稿4から新設の投稿5に移動した。

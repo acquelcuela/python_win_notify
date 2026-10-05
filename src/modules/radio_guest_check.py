@@ -32,6 +32,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from modules.grok_web import _find_claude_binary, _kill_tree, ask_grok
+from modules.local_config import load_config
 from modules.mail_gmail import send_html_mail
 
 
@@ -81,11 +82,8 @@ EXTRACT_INSTRUCTIONS = (
 
 
 def _load_settings(root: Path) -> dict:
-    try:
-        config = json.loads((root / "config.json").read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        config = {}
-    section = config.get("radio_guest_check") or {}
+    # followed_programs is a personal list, kept in config.local.json (gitignored).
+    section = load_config(root).get("radio_guest_check") or {}
     return {
         "interval_days": int(section.get("interval_days", DEFAULT_INTERVAL_DAYS)),
         "days_ahead": int(section.get("days_ahead", DEFAULT_DAYS_AHEAD)),
