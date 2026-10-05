@@ -9,15 +9,15 @@
     },
     {
       "time": "09:30",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "12:15",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "17:30",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {
       "time": "22:00",
@@ -34,7 +34,7 @@
     {"time": "22:30", "modules": ["stock_x_trends_web_fetch"]},
     {
       "time": "23:00",
-      "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     }
   ],
   "batch_window_minutes": 14,
@@ -311,10 +311,6 @@
         "name": "JX金属"
       },
       {
-        "ticker": "5401.T",
-        "name": "日本製鉄"
-      },
-      {
         "ticker": "6613.T",
         "name": "QDレーザ"
       },
@@ -341,18 +337,6 @@
       {
         "ticker": "5076.T",
         "name": "インフロニア・ホールディングス"
-      },
-      {
-        "ticker": "8267.T",
-        "name": "イオン"
-      },
-      {
-        "ticker": "8725.T",
-        "name": "MS&AD"
-      },
-      {
-        "ticker": "4206.T",
-        "name": "アイカ工業"
       },
       {
         "ticker": "4061.T",
