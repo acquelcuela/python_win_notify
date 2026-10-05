@@ -217,7 +217,7 @@ def _envelope_schema(data_schema: dict | None) -> dict:
     return {"type": "object", "properties": properties, "required": ["logged_in"]}
 
 
-def _build_prompt(question: str, data_schema: dict | None) -> str:
+def _build_prompt(question: str, data_schema: dict | None, extra_instructions: str | None = None) -> str:
     data_instruction = (
         "さらに、Grokの回答内容を data フィールドに、そのJSON Schemaの形式で整形して入れてください。"
         "Grok自身がJSONで答えていればそれをそのまま使い、テキストで答えていれば内容をSchemaに合わせてください。\n"
@@ -238,6 +238,7 @@ def _build_prompt(question: str, data_schema: dict | None) -> str:
         f"--- Grokへの質問(ここから) ---\n{question}\n--- (ここまで) ---\n\n"
         "Grokの回答本文は answer_text にそのまま入れてください。\n"
         f"{data_instruction}"
+        f"{extra_instructions + chr(10) if extra_instructions else ''}"
         "最後に、開いたタブを閉じてから、指定のJSON Schemaの形式で出力してください。"
     )
 
@@ -264,6 +265,7 @@ def ask_grok(
     cwd: Path | str | None = None,
     caller: str | None = None,
     enforce_limits: bool = True,
+    extra_instructions: str | None = None,
 ) -> dict:
     """Asks Grok `question` and writes the result to `output_path` as JSON.
 
@@ -272,6 +274,8 @@ def ask_grok(
     matching it. `caller` is recorded in the usage log. Unless
     `enforce_limits` is False, a call that would exceed config.json's
     grok_web limits (see get_usage_status) is skipped without opening Chrome.
+    `extra_instructions` is appended to the prompt for Claude (not sent to
+    Grok) - e.g. how to read link targets out of the answer.
     """
     usage_slot: tuple[str, int] | None = None
     output_path = Path(output_path)
@@ -352,7 +356,7 @@ def ask_grok(
     usage_slot = _record_call_start(caller, question)
 
     try:
-        stdout, stderr = proc.communicate(_build_prompt(question, schema), timeout=timeout_seconds)
+        stdout, stderr = proc.communicate(_build_prompt(question, schema, extra_instructions), timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         _kill_tree(proc)
         proc.communicate()

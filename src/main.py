@@ -61,6 +61,7 @@ MODULE_ORDER = [
     "disk_usage",
     "claude_usage",
     "note_draft_post",
+    "radio_guest_check",
     "nikkei_constituents",
     "report_html",
     "mail_gmail",
@@ -339,6 +340,8 @@ MODULE_TIMEOUT_OVERRIDES = {
     "stock_x_trends_web_fetch": 650,
     # up to max_posts_per_run (3) Chrome-driven drafts of up to 900s each
     "note_draft_post": 3000,
+    # up to 8 Grok queries (600s each at most) plus one claude -p merge
+    "radio_guest_check": 5400,
 }
 
 

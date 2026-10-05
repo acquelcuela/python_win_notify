@@ -15,6 +15,7 @@
       "time": "12:15",
       "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
+    {"time": "13:00", "days": "all", "modules": ["radio_guest_check"]},
     {
       "time": "17:30",
       "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
@@ -74,6 +75,7 @@
     "disk_usage": true,
     "claude_usage": true,
     "note_draft_post": true,
+    "radio_guest_check": true,
     "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true
@@ -88,6 +90,30 @@
     "max_tokens": 1000,
     "source": "web",
     "web_cache_max_age_minutes": 120
+  },
+  "radio_guest_check": {
+    "interval_days": 3,
+    "days_ahead": 4,
+    "followed_programs": [
+      "TOKYO SPEAKEASY／TOKYO FM 25:00",
+      "SING LIKE TALKING 佐藤竹善のアンダンテ／interfm 20:30",
+      "シアーミュージック presents しらスタのボイトレディオ／TOKYO FM 21:00",
+      "マヂカルラブリーのオールナイトニッポン0(ZERO)／KBCラジオ 27:00",
+      "コエトワ／OBCラジオ大阪 22:00",
+      "DOMOTOのどんなもんヤ！／文化放送 25:30",
+      "OLDIES GOODIES／e-radio FM滋賀 12:00",
+      "広瀬すずの「よはくじかん」／FM FUKUOKA 15:30",
+      "リリー・フランキー「スナックラジオ」／FM長崎 16:00",
+      "川島明 そもそもの話／FM長崎 17:00",
+      "三菱地所レジデンス Sparkle Life／TOKYO FM 18:30",
+      "錦鯉・渡辺隆の深夜、オヂさんは大胆に／文化放送 27:30",
+      "目覚めのウルフ／TBSラジオ 07:00",
+      "木村拓哉 Flow／FM FUKUOKA 11:30",
+      "CHINTAI presents きゃりーぱみゅぱみゅ Chapter #0 〜Touch Your Heart〜／FM FUKUOKA 12:30",
+      "SOKOKOKOTO／KBCラジオ 24:00",
+      "ギュウゾウと一色萌の雷ヘッドライナー／RADIO BERRY 24:30",
+      "サンセルモ presents 結婚式は あいのなかで"
+    ]
   },
   "note_draft_post": {
     "run_within_hours_before_weekly_reset": 24,
