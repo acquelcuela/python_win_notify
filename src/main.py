@@ -59,6 +59,7 @@ MODULE_ORDER = [
     "note_article_ideas_export",
     "onedrive_check",
     "disk_usage",
+    "claude_usage",
     "nikkei_constituents",
     "report_html",
     "mail_gmail",

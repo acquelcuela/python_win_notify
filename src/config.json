@@ -28,7 +28,7 @@
         "keyword_watch", "keyword_watch_mail",
         "marketplace_watch", "marketplace_watch_mail",
         "note_article_ideas", "note_article_ideas_export",
-        "onedrive_check", "disk_usage"
+        "onedrive_check", "disk_usage", "claude_usage"
       ]
     },
     {"time": "22:30", "modules": ["stock_x_trends_web_fetch"]},
@@ -71,6 +71,7 @@
     "note_article_ideas_export": true,
     "onedrive_check": true,
     "disk_usage": true,
+    "claude_usage": true,
     "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true
