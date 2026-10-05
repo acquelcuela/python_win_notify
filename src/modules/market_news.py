@@ -18,6 +18,16 @@ DEFAULT_QUERIES = [
 ]
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
+# Only show headlines not already shown in an earlier run (user request
+# 2026-10-02 - the 5 weekday reports kept repeating the same 18h of news).
+# The seen log does the dedup; the lookback still stretches back to the
+# previous run (plus a margin for RSS indexing lag) so Monday 07:00 picks up
+# the weekend since Friday 23:00 instead of only the last 18h.
+SEEN_LOG_PATH = Path("state") / "market_news_seen.json"
+SEEN_LOG_RETENTION_DAYS = 7
+LAST_RUN_MARGIN_HOURS = 1
+MAX_LOOKBACK_HOURS = 96
+
 
 def _load_config(root: Path) -> dict:
     path = root / "config.json"
@@ -125,11 +135,33 @@ def _news_sources(config: dict) -> list[dict]:
     ]
 
 
+def _load_seen(root: Path) -> dict:
+    path = root / SEEN_LOG_PATH
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _save_seen(root: Path, seen: dict) -> None:
+    path = root / SEEN_LOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(seen, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _seen_key(item: dict) -> str:
+    return item.get("title") or item.get("url") or ""
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
     output_path = output_dir / "market_news.json"
-    generated_at = datetime.now(JST).isoformat()
+    now = datetime.now(JST)
+    generated_at = now.isoformat()
 
     config = _load_config(root).get("market_news", {})
     sources = _news_sources(config)
@@ -141,7 +173,16 @@ def run(root: Path) -> None:
         for keyword in config.get("exclude_title_keywords", [])
         if str(keyword).strip()
     ]
-    cutoff = datetime.now(JST) - timedelta(hours=lookback_hours)
+    cutoff = now - timedelta(hours=lookback_hours)
+    seen = _load_seen(root)
+    last_run_text = seen.get("last_run_at")
+    if last_run_text:
+        try:
+            since_last_run = datetime.fromisoformat(last_run_text) - timedelta(hours=LAST_RUN_MARGIN_HOURS)
+            cutoff = min(cutoff, max(since_last_run, now - timedelta(hours=MAX_LOOKBACK_HOURS)))
+        except ValueError:
+            pass
+    seen_items = seen.get("items") if isinstance(seen.get("items"), dict) else {}
 
     all_items = []
     warnings = []
@@ -167,7 +208,11 @@ def run(root: Path) -> None:
         all_items.extend(source_items[:per_source_limit])
 
     recent_items = []
+    fetched_count = 0
     for item in _dedupe(all_items):
+        fetched_count += 1
+        if _seen_key(item) in seen_items:
+            continue
         published_text = item.get("published_at")
         if not published_text:
             recent_items.append(item)
@@ -183,6 +228,14 @@ def run(root: Path) -> None:
     recent_items.sort(key=lambda item: item.get("published_at") or "", reverse=True)
     recent_items = recent_items[:max_items]
 
+    seen_cutoff = (now - timedelta(days=SEEN_LOG_RETENTION_DAYS)).isoformat()
+    seen_items = {key: at for key, at in seen_items.items() if at >= seen_cutoff}
+    for item in recent_items:
+        key = _seen_key(item)
+        if key:
+            seen_items[key] = generated_at
+    _save_seen(root, {"last_run_at": generated_at, "items": seen_items})
+
     if recent_items:
         payload = {
             "module": "market_news",
@@ -194,6 +247,18 @@ def run(root: Path) -> None:
         if warnings:
             payload["warnings"] = warnings
         logging.info("[market_news] collected %s news items", len(recent_items))
+    elif fetched_count:
+        # Fetch worked, everything was already shown in an earlier run - not
+        # an error, just nothing new since then.
+        payload = {
+            "module": "market_news",
+            "generated_at": generated_at,
+            "status": "ok",
+            "source_count": len(sources),
+            "data": [],
+            "note": "No news newer than what earlier runs already showed.",
+        }
+        logging.info("[market_news] no new news items since the previous run")
     else:
         payload = {
             "module": "market_news",
