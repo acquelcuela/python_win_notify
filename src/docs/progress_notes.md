@@ -623,6 +623,11 @@ perform this action."...}`というエラーは、X Developer Community
 
 ## stock_x_trends: Grok APIコストの可視化とWeb画面代替案の検証(2026-09-28)
 
+> **追記(2026-10-05)**: この節の①「`-p` モードでは claude-in-chrome が使えない」という結論は
+> 誤りだった。原因は指示文の改行で引数が切れていたことで、標準入力で渡せば動く。
+> 2026-10-02 に Web 画面版(ログイン済みの grok.com)へ切り替え済み。
+> 末尾の「Grok を Web 画面版に切り替え(2026-10-02)」と `docs/grok_web_spec_20261005.md` を参照。
+
 `stock_x_trends`(唯一Grok APIを呼ぶモジュール)の実行コストを可視化してほしいという
 要望から、xAI APIレスポンスの`usage.cost_in_usd_ticks`(トークン代+X Search従量課金を
 含む実コスト、`ticks / 1e10 = USD`と実測で確認済み)を使う`GrokUsageTracker`を追加した
@@ -669,3 +674,38 @@ bot検知)に見合わないため、**API方式を継続**することにした
 **いつ削除しても構わない**。Playwright本体とChromiumバイナリ(`.venv`・
 `%LOCALAPPDATA%\ms-playwright`、計150MB超)も同様に、将来の再実験に備えて
 アンインストールせず残してある。
+
+## Grok を Web 画面版に切り替え(2026-10-02)
+
+9/28 に不採用とした「`claude -p --chrome` で Chrome を操作して grok.com に聞く」案を
+再検証し、動くことを確認したので切り替えた。仕様の詳細は `docs/grok_web_spec_20261005.md`。
+
+**9/28 に動かなかった原因**: Windows では `claude` が `claude.cmd`(バッチファイル)なので、
+引数で渡した指示文が cmd.exe によって最初の改行で切られ、`--chrome` 以降のオプションも
+すべて消えていた。指示文を標準入力で渡すと、`-p` でも claude-in-chrome のツールが使える。
+権限は `--dangerously-skip-permissions` ではなく `--allowedTools mcp__claude-in-chrome`
+(Chrome の操作だけ許可)で足りる。
+
+**ログインについて**: 9/28 の②のとおり、ログインなしの grok.com は回答しない。今回は
+普段の Chrome プロファイルでログイン済みの grok.com を使う。初回は利用規約の更新への
+同意と年齢確認の画面が出たので、本人が手で済ませた(Claude は代わりに操作しない)。
+
+**作ったもの**:
+- `modules/grok_web.py`: `ask_grok("質問", 保存先)` で Grok に質問し、結果を JSON で保存する
+  共通モジュール。他のバッチからも使える。呼び出し回数を `state/grok_web_usage.json` に記録し、
+  無料版 Grok の枠に合わせて「2時間に10回まで」に制限する。Grok 自身が上限のメッセージを
+  出したら2時間止める。
+- `stock_x_trends_web_fetch` を 06:30 / 22:30(平日)に追加し、`stock_x_trends.source` を
+  `"web"` に変更。`stock_x_trends` は120分より古いキャッシュを使わない。
+
+**API 版との比較(2026-10-02 実測)**: 1回で取れる銘柄は API 版の8件に対して Web 版は4件前後と
+少ないが、理由や情報源は Web 版の方が具体的だった。費用は API の約20〜50円/回から0円になり、
+代わりに Claude Pro の利用枠を使う。所要時間は約2〜4分。
+
+**07:00 の合わせ方も見直した**: 以前は前の晩 23:00 の結果に朝の結果を足して8件で切っていたため、
+23:00 で8件そろうと朝の新しい銘柄が1件も入らなかった。上限をなくし、重複だけ除いて全件残す
+ようにした。あわせて、実行ごとの結果を `output/history/stock_x_trends_runs/` に別ファイルで
+保存するようにし、朝の取得に失敗しても前の晩の分は掲載されるようにした。
+
+初回の本番(10/2 22:30 取得 → 23:00 レポート)は成功。その後 `radio_guest_check`(10/4〜)も
+grok_web を使っている。
