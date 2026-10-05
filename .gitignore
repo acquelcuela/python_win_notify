@@ -36,3 +36,10 @@ src/post_images/posted/*
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# note draft instruction files (personal content; only README/template tracked)
+src/note_drafts/*
+!src/note_drafts/README.md
+!src/note_drafts/queue/
+src/note_drafts/queue/*
+!src/note_drafts/queue/_template.md

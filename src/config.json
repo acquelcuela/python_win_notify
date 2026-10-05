@@ -32,6 +32,7 @@
       ]
     },
     {"time": "22:30", "modules": ["stock_x_trends_web_fetch"]},
+    {"time": "23:30", "days": "all", "modules": ["note_draft_post"]},
     {
       "time": "23:00",
       "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_range_eval", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
@@ -72,6 +73,7 @@
     "onedrive_check": true,
     "disk_usage": true,
     "claude_usage": true,
+    "note_draft_post": true,
     "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true
@@ -86,6 +88,13 @@
     "max_tokens": 1000,
     "source": "web",
     "web_cache_max_age_minutes": 120
+  },
+  "note_draft_post": {
+    "run_within_hours_before_weekly_reset": 24,
+    "max_week_used_pct": 90,
+    "max_session_used_pct": 80,
+    "max_posts_per_run": 3,
+    "timeout_seconds_per_post": 900
   },
   "grok_web": {
     "window_limit": 10,

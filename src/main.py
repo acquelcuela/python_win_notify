@@ -60,6 +60,7 @@ MODULE_ORDER = [
     "onedrive_check",
     "disk_usage",
     "claude_usage",
+    "note_draft_post",
     "nikkei_constituents",
     "report_html",
     "mail_gmail",
@@ -336,6 +337,8 @@ MODULE_TIMEOUT_SECONDS = 180
 # web UI to answer) instead of a single fast API call.
 MODULE_TIMEOUT_OVERRIDES = {
     "stock_x_trends_web_fetch": 650,
+    # up to max_posts_per_run (3) Chrome-driven drafts of up to 900s each
+    "note_draft_post": 3000,
 }
 
 
