@@ -43,3 +43,6 @@ src/note_drafts/*
 !src/note_drafts/queue/
 src/note_drafts/queue/*
 !src/note_drafts/queue/_template.md
+
+# note writing/posting workspace (personal content incl. portfolio; moved from inbox/test_cowork_note 2026-10-04)
+note/
