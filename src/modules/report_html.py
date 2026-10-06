@@ -1017,6 +1017,63 @@ def _dividend_section(root: Path) -> str:
     """
 
 
+# Xトレンド銘柄の目印(2026-10-06の検証: 255件・37営業日、当日の寄り付き→大引け)。
+# 「前日終値→終値」では日経平均に60%勝っていたが、その大半は寄り付き前の
+# 値の飛び(平均+2.1%)で、寄り付きで買うと全体では47%と優位性はなかった。
+# 差が出たのは話題の種類と寄り付きの値の飛び:
+#   strong_positive(「爆上げ確定」系)      日経平均に勝った41%(148件)
+#   寄り付きで+3%以上値が飛んだ            日経平均に勝った32%(47件)
+#   positive かつ 値の飛び+3%未満          日経平均に勝った60%(89件)
+# 数字は固定(件数が増えたら検証し直して更新する)。
+X_GAP_CHASE_PCT = 3.0
+
+
+def _x_trend_opening_gaps(tickers: list[str]) -> dict[str, float]:
+    """Today's opening gap (previous close -> today's open, %) per 4-digit code.
+    Empty before 09:00 or when today's bar isn't available yet."""
+    now = datetime.now(JST)
+    if now.hour < 9 or now.weekday() >= 5 or not tickers:
+        return {}
+    try:
+        import yfinance as yf
+
+        symbols = [f"{t}.T" for t in tickers]
+        data = yf.download(symbols, period="5d", interval="1d", progress=False, auto_adjust=False, group_by="ticker", threads=True)
+    except Exception as exc:
+        logging.warning("[report_html] opening gap fetch failed: %s", exc)
+        return {}
+    gaps = {}
+    for ticker in tickers:
+        try:
+            frame = data[f"{ticker}.T"].dropna(subset=["Open", "Close"])
+            if len(frame) < 2 or frame.index[-1].date() != now.date():
+                continue
+            previous_close = float(frame["Close"].iloc[-2])
+            if previous_close:
+                gaps[ticker] = (float(frame["Open"].iloc[-1]) / previous_close - 1) * 100
+        except Exception:
+            continue
+    return gaps
+
+
+def _x_trend_badge(sentiment: str, gap: float | None) -> str:
+    def _badge(text: str, color: str, background: str) -> str:
+        return (
+            f'<div style="margin-top:4px;padding:3px 6px;border-radius:6px;font-size:12px;font-weight:bold;'
+            f'color:{color};background:{background};">{text}</div>'
+        )
+
+    badges = []
+    if gap is not None and gap >= X_GAP_CHASE_PCT:
+        badges.append(_badge(f"⚠ 寄り付きで{gap:+.1f}%値が飛んだ：追いかけ注意(過去 日経平均に勝った32%・47件)", "#b91c1c", "#fef2f2"))
+    if sentiment == "strong_positive":
+        badges.append(_badge("⚠ 煽り系：寄り付き後に下げやすい(過去 日経平均に勝った41%・148件)", "#b45309", "#fffbeb"))
+    elif sentiment == "positive" and (gap is None or gap < X_GAP_CHASE_PCT):
+        condition = f"寄り付きの値の飛び{gap:+.1f}%" if gap is not None else "寄り付きの値の飛びが+3%未満なら"
+        badges.append(_badge(f"◎ 材料系・{condition}：過去 日経平均に勝った60%(89件)", "#047857", "#ecfdf5"))
+    return "".join(badges)
+
+
 def _stock_x_trends_section(root: Path) -> str:
     payload = _load_json(root / "output" / "stock_x_trends.json")
     if not payload or payload.get("status") != "ok" or not payload.get("data"):
@@ -1061,6 +1118,18 @@ def _stock_x_trends_section(root: Path) -> str:
             if ticker:
                 eval_by_ticker[ticker] = r
 
+    # Opening gaps only make sense for today's morning list (07:00); the
+    # 23:00 list is for the next session, whose open hasn't happened yet.
+    gaps: dict[str, float] = {}
+    try:
+        generated = datetime.fromisoformat(str(payload.get("generated_at"))).astimezone(JST)
+        if generated.date() == datetime.now(JST).date() and generated.hour < 9:
+            gaps = _x_trend_opening_gaps(
+                sorted({str(i.get("ticker") or "").strip() for i in stock_findings if str(i.get("ticker") or "").strip()})
+            )
+    except (TypeError, ValueError):
+        pass
+
     finding_cells = []
     for item in stock_findings + theme_findings:
         name = str(item.get("name") or "").strip()
@@ -1092,6 +1161,7 @@ def _stock_x_trends_section(root: Path) -> str:
                 <div class="muted">{code_line}{html.escape(str(item.get("sentiment") or "-"))}</div>
                 <div class="news-hit-title">{html.escape(str(item.get("reason") or "-"))}</div>
                 <div class="muted">{html.escape(str(item.get("detail") or item.get("source") or "-"))}</div>
+                {_x_trend_badge(str(item.get("sentiment") or ""), gaps.get(ticker))}
                 {unverified_note}
                 {verdict_html}
               </div>
@@ -1111,6 +1181,7 @@ def _stock_x_trends_section(root: Path) -> str:
       <div class="section-title">Xトレンド銘柄</div>
       <div class="muted">検索時刻: {generated_label}(1日1回・朝07:00のみ検索し、終日この結果を表示します)</div>
       {staleness_note}
+      <div class="muted">目印は過去の検証(寄り付きで買って大引けで売った場合、255件)から: ◎=材料系で寄り付きの値の飛びが小さい(日経平均に勝った60%)、⚠=煽り系や寄り付きで大きく値が飛んだ銘柄(勝率3〜4割)。寄り付きの値の飛びは09:00以降のレポートで表示します。</div>
       <h3>共通キーワード</h3>
       <div style="margin-top:8px;">{keyword_html}</div>
       <h3>銘柄別結果</h3>
