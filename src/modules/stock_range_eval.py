@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yfinance as yf
 
+from modules.market_realtime import fetch_yahoo_top_indices
 from modules.stock_range import _load_predictions_log, _save_predictions_log
 
 
@@ -113,6 +114,57 @@ def _fetch_today_change_pct(ticker_symbol: str, today_date) -> float | None:
         return None
 
 
+# The report splits each candidate's track record by the day's market
+# direction (user request 2026-10-06: a single hit rate mixed ~65% on up
+# days with ~30% on down days). TOPIX itself isn't available from yfinance,
+# so the TOPIX-tracking ETF 1306 stands in for it.
+NIKKEI_TICKER = "^N225"
+TOPIX_PROXY_TICKER = "1306.T"
+
+
+def classify_market_day(nikkei_change_pct: float | None, topix_change_pct: float | None) -> str | None:
+    """"up" if Nikkei and TOPIX both rose, "down" if both fell, else "mixed"."""
+    if nikkei_change_pct is None or topix_change_pct is None:
+        return None
+    if nikkei_change_pct > 0 and topix_change_pct > 0:
+        return "up"
+    if nikkei_change_pct <= 0 and topix_change_pct <= 0:
+        return "down"
+    return "mixed"
+
+
+def _daily_change_pcts(ticker_symbol: str, start: str) -> dict[str, float]:
+    try:
+        hist = yf.Ticker(ticker_symbol).history(start=start, interval="1d", auto_adjust=False)
+    except Exception as exc:
+        logging.warning("[stock_range_eval] %s history fetch failed: %s", ticker_symbol, exc)
+        return {}
+    closes = hist["Close"].dropna() if not hist.empty else hist
+    changes = closes.pct_change() * 100
+    return {d.strftime("%Y-%m-%d"): float(v) for d, v in changes.items() if v == v}
+
+
+def _backfill_market_day(records: list[dict]) -> bool:
+    """Fills market_day for evaluated records that don't have it yet (logged
+    before 2026-10-06, or a day whose final run couldn't fetch the indices)."""
+    missing = [r for r in records if r.get("evaluated") and not r.get("market_day") and r.get("logged_date")]
+    if not missing:
+        return False
+    start = (datetime.fromisoformat(min(r["logged_date"] for r in missing)) - timedelta(days=10)).strftime("%Y-%m-%d")
+    nikkei = _daily_change_pcts(NIKKEI_TICKER, start)
+    topix = _daily_change_pcts(TOPIX_PROXY_TICKER, start)
+    filled = False
+    for record in missing:
+        day = record.get("evaluated_date") or record["logged_date"]
+        market_day = classify_market_day(nikkei.get(day), topix.get(day))
+        if market_day:
+            record["market_day"] = market_day
+            record["nikkei_change_pct"] = round(nikkei[day], 2)
+            record["topix_change_pct"] = round(topix[day], 2)
+            filled = True
+    return filled
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -124,6 +176,8 @@ def run(root: Path) -> None:
     _log_market_forecast_accuracy(root, now, today_label)
 
     records = _load_predictions_log(root)
+    if _backfill_market_day(records):
+        _save_predictions_log(root, records)
     todays_candidates = [
         r for r in records
         if r.get("logged_date") == today_label and not r.get("evaluated")
@@ -143,6 +197,24 @@ def run(root: Path) -> None:
     stage = "interim" if now.time() < MARKET_CLOSE_TIME else "final"
 
     today_date = now.date()
+    market = {}
+    if stage == "final":
+        # Prefer the Yahoo!ファイナンス top page (real TOPIX, not the 1306
+        # proxy); fall back to yfinance if the page can't be read.
+        try:
+            top = fetch_yahoo_top_indices()
+            nikkei, topix = top["nikkei"]["change_pct"], top["topix"]["change_pct"]
+        except Exception as exc:
+            logging.warning("[stock_range_eval] Yahoo!ファイナンス top unavailable, using yfinance: %s", exc)
+            nikkei = _fetch_today_change_pct(NIKKEI_TICKER, today_date)
+            topix = _fetch_today_change_pct(TOPIX_PROXY_TICKER, today_date)
+        market_day = classify_market_day(nikkei, topix)
+        if market_day:
+            market = {
+                "market_day": market_day,
+                "nikkei_change_pct": round(nikkei, 2),
+                "topix_change_pct": round(topix, 2),
+            }
     evaluated = []
     changed = False
     for record in todays_candidates:
@@ -163,6 +235,7 @@ def run(root: Path) -> None:
             record["hit"] = hit
             record["flipped"] = previous_hit is not None and previous_hit != hit
             record["previous_hit"] = previous_hit if record["flipped"] else None
+            record.update(market)
         changed = True
         evaluated.append(record)
 

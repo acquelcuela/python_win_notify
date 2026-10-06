@@ -313,8 +313,153 @@ def _special_watch_tickers(root: Path) -> dict[tuple[str, str], tuple[int, int]]
     return result
 
 
+# 地合い別の成績(2026-10-06): 「当日プラスか」の的中率は、日経・TOPIXが
+# 両方上がった日は約65%、両方下がった日は約30%と地合いでほぼ決まっていた。
+# 単一の的中率だと「今日は相場が上がりそうか」を別に判断する必要があるので、
+# 地合い別の実績と、今朝の時間外の動きから見た「今日の見込み的中率」を出す。
+# market_day は stock_range_eval が記録する(日経平均とTOPIX連動ETF 1306)。
+MARKET_DAYS = ("up", "mixed", "down")
+MARKET_DAY_LABELS = {"up": "両方上昇", "mixed": "まちまち", "down": "両方下落"}
+FUTURES_BUCKETS = (
+    ("-0.5%以下", lambda v: v <= -0.5),
+    ("-0.5〜0%", lambda v: -0.5 < v < 0),
+    ("0〜+1%", lambda v: 0 <= v < 1),
+    ("+1%以上", lambda v: v >= 1),
+)
+# 先物の水準ごとの日数がこれより少なければ、全期間の地合いの比率で代用する
+MIN_FUTURES_BUCKET_DAYS = 5
+# 銘柄ラベル(「下げにも強い」「相場次第」)を付けるのに必要な日数
+MIN_TICKER_DAYS_FOR_LABEL = 4
+
+
+def _futures_bucket(value: float | None) -> str | None:
+    if value is None:
+        return None
+    return next(label for label, matches in FUTURES_BUCKETS if matches(value))
+
+
+def _market_day_stats(root: Path) -> dict:
+    path = root / "state" / "stock_range_predictions.json"
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        records = []
+    by_type: dict = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+    by_ticker: dict = defaultdict(lambda: defaultdict(lambda: [0, 0]))
+    days: dict[str, tuple[str, float | None]] = {}
+    for r in records:
+        day = r.get("market_day")
+        if not r.get("evaluated") or r.get("hit") is None or day not in MARKET_DAYS:
+            continue
+        for bucket in (by_type[r.get("type")][day], by_ticker[(r.get("type"), r.get("ticker"))][day]):
+            bucket[0] += int(bool(r["hit"]))
+            bucket[1] += 1
+        days.setdefault(r.get("logged_date"), (day, r.get("market_change_pct")))
+    futures_days: dict = defaultdict(lambda: defaultdict(int))
+    all_days: dict = defaultdict(int)
+    for day, futures in days.values():
+        all_days[day] += 1
+        bucket = _futures_bucket(futures)
+        if bucket:
+            futures_days[bucket][day] += 1
+    return {"by_type": by_type, "by_ticker": by_ticker, "futures_days": futures_days, "all_days": all_days}
+
+
+def _rate_text(hits_n: list[int] | None) -> str:
+    if not hits_n or not hits_n[1]:
+        return "-"
+    return f"{hits_n[0]}/{hits_n[1]}({hits_n[0] / hits_n[1] * 100:.0f}%)"
+
+
+def _expected_hit_rate(stats: dict, kind: str, day_counts: dict) -> float | None:
+    total = weight = 0.0
+    for day in MARKET_DAYS:
+        hits, n = stats["by_type"][kind][day]
+        if n and day_counts.get(day):
+            total += day_counts[day] * hits / n
+            weight += day_counts[day]
+    return total / weight if weight else None
+
+
+def _market_outlook_block(stats: dict, market_change_pct: float | None) -> str:
+    rows = "".join(
+        f'<tr><td style="padding:2px 8px;">{label}</td>'
+        + "".join(f'<td style="padding:2px 8px;">{_rate_text(stats["by_type"][kind][day])}</td>' for day in MARKET_DAYS)
+        + "</tr>"
+        for kind, label in (("momentum", "モメンタム型"), ("reversal", "リバーサル型"))
+    )
+    table = (
+        '<table style="margin-top:4px;border-collapse:collapse;font-size:12px;">'
+        '<tr style="background:#f1f5f9;"><th style="padding:2px 8px;text-align:left;">当日の地合い</th>'
+        + "".join(f'<th style="padding:2px 8px;text-align:left;">{MARKET_DAY_LABELS[d]}</th>' for d in MARKET_DAYS)
+        + f"</tr>{rows}</table>"
+    )
+    outlook = ""
+    bucket = _futures_bucket(market_change_pct)
+    if bucket:
+        counts = stats["futures_days"].get(bucket) or {}
+        n_days = sum(counts.values())
+        if n_days >= MIN_FUTURES_BUCKET_DAYS:
+            basis = (
+                f"過去の同じ水準({bucket})の朝 {n_days}日: "
+                + " / ".join(f"{MARKET_DAY_LABELS[d]} {counts.get(d, 0)}日" for d in MARKET_DAYS)
+            )
+        else:
+            counts = stats["all_days"]
+            basis = f"同じ水準({bucket})の朝はまだ{n_days}日しかないため、全期間の地合いの比率で計算"
+        expected = {kind: _expected_hit_rate(stats, kind, counts) for kind in ("momentum", "reversal")}
+        expected_text = " / ".join(
+            f"{label} 約{expected[kind] * 100:.0f}%"
+            for kind, label in (("momentum", "モメンタム"), ("reversal", "リバーサル"))
+            if expected[kind] is not None
+        )
+        if expected_text:
+            outlook = (
+                '<div style="margin-top:6px;padding:8px 10px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;">'
+                f'<div style="font-weight:bold;">今日の見込み的中率: {expected_text}</div>'
+                f'<div class="muted">今朝の時間外 {market_change_pct:+.2f}% → {html.escape(basis)}</div>'
+                "</div>"
+            )
+    return f"""
+      {outlook}
+      <div class="muted" style="margin-top:6px;">地合い別の的中率(これまで。当日の値動きがプラスで終わったか):</div>
+      {table}
+    """
+
+
+def _ticker_market_line(stats: dict, kind: str, ticker: str | None) -> str:
+    rates = stats["by_ticker"].get((kind, ticker))
+    if not rates:
+        return ""
+    up, down = rates["up"], rates["down"]
+    label = ""
+    # 「下げの日にも強い」は、上げの日もきちんと当たっている銘柄に限る
+    # (上げの日も5割前後なら、地合いと無関係にばらついているだけ)
+    if (
+        up[1] >= MIN_TICKER_DAYS_FOR_LABEL
+        and down[1] >= MIN_TICKER_DAYS_FOR_LABEL
+        and up[0] / up[1] >= 0.6
+        and down[0] / down[1] >= 0.5
+    ):
+        label = '<span style="color:#047857;font-weight:bold;"> ← 下げの日にも強い</span>'
+    elif (
+        up[1] >= MIN_TICKER_DAYS_FOR_LABEL
+        and down[1] >= MIN_TICKER_DAYS_FOR_LABEL
+        and up[0] / up[1] >= 0.7
+        and down[0] / down[1] <= 0.2
+    ):
+        label = '<span style="color:#b45309;font-weight:bold;"> ← 相場次第</span>'
+    return (
+        f'<div class="muted">地合い別の実績: 両方上昇の日 {_rate_text(up)}・まちまち {_rate_text(rates["mixed"])}'
+        f"・両方下落の日 {_rate_text(down)}{label}</div>"
+    )
+
+
 def _stock_range_candidate_cards(
-    candidates: list[dict], kind: str, special_watch: dict[tuple[str, str], tuple[int, int]]
+    candidates: list[dict],
+    kind: str,
+    special_watch: dict[tuple[str, str], tuple[int, int]],
+    market_stats: dict | None = None,
 ) -> str:
     if not candidates:
         return '<div class="muted">該当銘柄なし</div>'
@@ -367,6 +512,7 @@ def _stock_range_candidate_cards(
               </div>
               <div style="color:{change_color};font-weight:bold;clear:both;">{change_text}(前日比)</div>
               <div class="muted">{html.escape(reasons)}</div>
+              {_ticker_market_line(market_stats, kind, candidate.get("ticker")) if market_stats else ""}
               {range_bar}
               {''.join(trend_rows)}
             </div>
@@ -445,28 +591,42 @@ def _stock_range_score_section(root: Path) -> str:
     market_change_pct = payload.get("market_change_pct")
     market_note = ""
     if market_change_pct is not None:
-        market_note = f'<div class="muted">日経225先物(夜間取引): {market_change_pct:+.2f}%</div>'
+        source = payload.get("market_change_source") or {}
+        source_label = source.get("label") or "日経225先物(CME・シカゴ)"
+        detail = ""
+        if source.get("source") == "yahoo_realtime_search":
+            posted = str(source.get("latest_post_at") or "")[11:16]
+            detail = (
+                f'(水準 {source.get("value"):,.0f} / 前日終値 {source.get("previous_close"):,.0f}、'
+                f'最新{source.get("posts_used")}件の投稿の中央値、最新 {posted})'
+            )
+        market_note = (
+            f'<div class="muted">今朝の時間外の動き: {html.escape(source_label)} {market_change_pct:+.2f}%'
+            f"{html.escape(detail)}</div>"
+        )
         if market_change_pct >= STRONG_FUTURES_THRESHOLD_PCT:
             market_note += (
                 '<div style="margin-top:6px;padding:8px 10px;background:#ecfdf5;border:1px solid #6ee7b7;'
                 'border-radius:6px;color:#047857;font-weight:bold;">'
-                f'📈 はっきりした先物高({market_change_pct:+.2f}%) - 過去データではこの水準の朝はモメンタム型の'
+                f'📈 はっきりした時間外高({market_change_pct:+.2f}%) - 過去データではこの水準の朝はモメンタム型の'
                 'あたりが多い傾向(参考値、まだ実績日数は少なめ)</div>'
             )
 
     special_watch = _special_watch_tickers(root)
+    market_stats = _market_day_stats(root)
 
     return f"""
     <section class="panel">
       <div class="section-title">30日レンジ 本日の上昇候補(機械的スコアリング・投資助言ではありません)</div>
       <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝06:45の市場が開く前に算出し、本日の値動きを対象にした候補です。終日この結果を表示します)</div>
-      <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・夜間先物の地合いを組み合わせた参考指標です。的中を保証するものではありません。</div>
+      <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・時間外の地合い(日経時間外、取れないときはCME先物)を組み合わせた参考指標です。的中を保証するものではありません。</div>
       <div class="muted">⭐特別注目銘柄: 同じ型(モメンタム/リバーサル)で{SPECIAL_WATCH_MIN_N}回以上候補に出て、的中率が{SPECIAL_WATCH_HIT_RATE_PCT:.0f}%を超えた銘柄。カードを金色で強調表示します(基準は月1回程度見直し)。</div>
       {market_note}
+      {_market_outlook_block(market_stats, market_change_pct)}
       <h3>モメンタム型(上昇継続を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], "momentum", special_watch)}
+      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], "momentum", special_watch, market_stats)}
       <h3>リバーサル型(反発を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], "reversal", special_watch)}
+      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], "reversal", special_watch, market_stats)}
       <div class="muted" style="margin-top:8px;">これまでの的中率(当日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
     </section>
     """
