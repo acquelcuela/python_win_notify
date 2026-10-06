@@ -1,0 +1,14 @@
+{
+  "targets": [
+    {
+      "id": "oppo",
+      "name": "OPPO公式ショップ",
+      "pages": [
+        {"section": "スマートフォン", "url": "https://shop.oppojapan.com/view/category/smartphone"},
+        {"section": "アウトレット", "url": "https://shop.oppojapan.com/view/category/outlet"},
+        {"section": "トップ", "url": "https://shop.oppojapan.com/", "items": false}
+      ],
+      "instruction": "スマートフォン/アウトレットは一覧の全商品(「全N件」の件数と一致するか確認)。商品名は一覧の表記そのまま、price は表示中の税込価格、「10%OFF」等の割引表示は badges に。トップは商品を取らず、セール・キャンペーン告知(例: 期間限定SALE、特集ページへのバナー)を campaigns に入れ、通常価格と特価が併記されていれば title に「Reno13 A 期間限定SALE 48,800→39,800」のように含める。トップのスライド/バナーは画像なので、リンク先URLと画像ファイル名・alt から内容を推測して title にする。"
+    }
+  ]
+}

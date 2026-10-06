@@ -67,6 +67,7 @@ MODULE_ORDER = [
     "nikkei_constituents",
     "report_html",
     "mail_gmail",
+    "web_watch",
 ]
 RUN_HISTORY_PATH = ROOT / "state" / "run_history.json"
 RUN_LOCK_PATH = ROOT / "state" / "batch.lock"
@@ -345,6 +346,8 @@ MODULE_TIMEOUT_OVERRIDES = {
     "note_draft_post": 3000,
     # up to 8 Grok queries (600s each at most) plus one claude -p merge
     "radio_guest_check": 5400,
+    # one Chrome-driven claude -p per target (~2 min each in testing)
+    "web_watch": 900,
 }
 
 
@@ -394,10 +397,14 @@ def run_module_with_watchdog(name: str, runner, timeout_seconds: int | None = No
 
 def resolve_modules_for_schedule(schedule_key: str | None) -> list[str]:
     if schedule_key:
+        # Several entries can share a time with different days (e.g. a weekday
+        # and a weekend 23:00), so prefer the one active today.
+        today_key = WEEKDAY_NAMES[datetime.now(JST).weekday()]
         try:
-            for entry in parse_schedule_entries():
-                if entry["time_str"] == schedule_key and entry["modules"] is not None:
-                    return [name for name in entry["modules"] if module_enabled(name)]
+            entries = [e for e in parse_schedule_entries() if e["time_str"] == schedule_key and e["modules"] is not None]
+            entries.sort(key=lambda e: today_key not in e["days"])
+            for entry in entries:
+                return [name for name in entry["modules"] if module_enabled(name)]
         except ValueError:
             pass
     return [name for name in MODULE_ORDER if module_enabled(name)]
