@@ -141,9 +141,33 @@ def _escape_and_highlight(text: str, terms: list[str]) -> str:
     return highlighted.replace("\n", "<br>")
 
 
+def _ai_summary_failure_note(errors: dict | None, provider: str | None) -> str:
+    if not errors:
+        return ""
+    label = "Claude" if provider in (None, "", "claude") else provider
+    items = "".join(f"<li>{html.escape(str(k))}: {html.escape(str(v)[:300])}</li>" for k, v in errors.items())
+    return f"""
+      <div class="alert" style="margin-top:8px;">
+        <strong>AI要約の作成に失敗しました({html.escape(label)})。</strong>
+        <ul>{items}</ul>
+      </div>
+    """
+
+
 def _ai_summary_section(root: Path) -> str:
     payload = _load_json(root / "output" / "ai_summary.json")
-    if not payload or payload.get("status") != "ok" or not payload.get("data"):
+    if not payload:
+        return ""
+    if payload.get("status") == "error":
+        # Shown rather than silently dropped (user request 2026-10-06: with
+        # Claude and no Gemini fallback, a failure should be reported as one).
+        return f"""
+    <section class="panel">
+      <div class="section-title">AI概要と考察</div>
+      {_ai_summary_failure_note(payload.get("error") if isinstance(payload.get("error"), dict) else {"error": payload.get("error")}, payload.get("provider"))}
+    </section>
+    """
+    if payload.get("status") != "ok" or not payload.get("data"):
         return ""
 
     raw_market_data = payload["data"].get("market_data", "")
@@ -173,7 +197,8 @@ def _ai_summary_section(root: Path) -> str:
     <section class="panel">
       <div class="section-title">AI概要と考察</div>
       <div class="ai-summary">{blocks}</div>
-      <div class="muted">生成モデル: {html.escape(payload.get("model", "-"))}</div>
+      {_ai_summary_failure_note(payload.get("warnings"), payload.get("provider"))}
+      <div class="muted">生成モデル: {html.escape("Claude(Claude Pro)" if payload.get("provider") == "claude" else payload.get("model", "-"))}</div>
     </section>
     """
 
@@ -1242,6 +1267,12 @@ def _gemini_cost_footer(root: Path) -> str:
         return ""
     cost_jpy = payload.get("gemini_cost_jpy")
     call_count = payload.get("gemini_call_count")
+    if payload.get("provider") == "claude":
+        return """
+    <div class="muted" style="margin-top:12px;padding:0 16px 16px;">
+      AI要約: Claude(Claude Pro・定額、API料金なし)で生成
+    </div>
+    """
     if cost_jpy is None:
         return ""
     return f"""

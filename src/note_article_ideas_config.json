@@ -4,5 +4,8 @@
   "candidate_count": 5,
   "similarity_threshold": 0.2,
   "trend_seed_count": 15,
-  "model": "gemini-3.1-flash-lite"
+  "provider": "claude",
+  "model": "gemini-3.1-flash-lite",
+  "claude_model": "",
+  "fallback_to_gemini": false
 }

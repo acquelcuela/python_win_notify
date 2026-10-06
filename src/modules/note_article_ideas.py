@@ -12,7 +12,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from modules.ai_summary import _call_gemini
+from modules.llm_client import can_run, generate, send_failure_mail
 from modules.gemini_pricing import GeminiUsageTracker
 
 
@@ -360,8 +360,8 @@ def run(root: Path) -> None:
     output_path = output_dir / "note_article_ideas.json"
     generated_at = datetime.now(JST).isoformat()
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
+    config = _load_config(root)
+    if not can_run(config):
         payload = {
             "module": "note_article_ideas",
             "generated_at": generated_at,
@@ -372,7 +372,6 @@ def run(root: Path) -> None:
         logging.info("[note_article_ideas] skipped: GEMINI_API_KEY is not set")
         return
 
-    config = _load_config(root)
     queries = [str(q).strip() for q in (config.get("queries") or DEFAULT_QUERIES) if str(q).strip()]
     daily_count = int(config.get("daily_count", DEFAULT_DAILY_COUNT))
     candidate_count = int(config.get("candidate_count", DEFAULT_CANDIDATE_COUNT))
@@ -393,8 +392,9 @@ def run(root: Path) -> None:
     usage_tracker = GeminiUsageTracker(model)
 
     try:
-        text, usage = _call_gemini(api_key=api_key, model=model, prompt=prompt)
-        usage_tracker.add(usage)
+        llm = generate(prompt, config, DEFAULT_MODEL, cwd=root)
+        text = llm.text
+        usage_tracker.add(llm.gemini_usage)
         data = _extract_json(text)
         candidates = data.get("ideas") or []
         candidates = [
@@ -415,7 +415,8 @@ def run(root: Path) -> None:
             "error": str(exc),
         }
         output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.error("[note_article_ideas] Gemini call failed: %s", exc)
+        logging.error("[note_article_ideas] LLM call failed: %s", exc)
+        send_failure_mail("note記事アイデア", str(exc), config)
         return
 
     # Code-level dedup pass: the prompt already asked Gemini to avoid
@@ -448,7 +449,8 @@ def run(root: Path) -> None:
         "module": "note_article_ideas",
         "generated_at": generated_at,
         "status": "ok",
-        "model": model,
+        "model": model if llm.provider == "gemini" else llm.model,
+        "provider": llm.provider,
         "cost_jpy": round(usage_tracker.cost_jpy, 2),
         "trend_seeds": trend_seeds,
         "new_ranking_tickers": new_tickers,

@@ -1,5 +1,8 @@
 {
   "digest_days": [5, 10, 15, 20, 25, 30],
   "lookback_days": 5,
-  "model": "gemini-3.1-flash-lite"
+  "provider": "claude",
+  "model": "gemini-3.1-flash-lite",
+  "claude_model": "",
+  "fallback_to_gemini": false
 }

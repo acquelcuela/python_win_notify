@@ -1,16 +1,14 @@
 import json
 import logging
 import os
-import urllib.error
-import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from modules.gemini_pricing import GeminiUsageTracker
+from modules.llm_client import _call_gemini, can_run, generate, provider_of  # noqa: F401  (_call_gemini re-exported)
 
 JST = timezone(timedelta(hours=9), "JST")
 DEFAULT_MODEL = "gemini-3.1-flash-lite"
-API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
 def _load_json(path: Path) -> dict | None:
@@ -138,44 +136,6 @@ JSON:
 """.strip()
 
 
-def _call_gemini(api_key: str, model: str, prompt: str) -> tuple[str, dict]:
-    """Returns (text, usage_metadata); see modules/gemini_pricing.py."""
-    url = API_URL_TEMPLATE.format(model=model)
-    body = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
-        ]
-    }
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini API HTTP {exc.code}: {detail}") from exc
-
-    candidates = result.get("candidates") or []
-    if not candidates:
-        raise RuntimeError("Gemini API returned no candidates.")
-    parts = candidates[0].get("content", {}).get("parts") or []
-    text = "".join(str(part.get("text", "")) for part in parts).strip()
-    if not text:
-        raise RuntimeError("Gemini API returned empty text.")
-    return text, (result.get("usageMetadata") or {})
-
-
 def _build_skipped_payload(generated_at: str) -> dict:
     return {
         "module": "ai_summary",
@@ -191,9 +151,9 @@ def run(root: Path) -> None:
     output_dir.mkdir(exist_ok=True)
     output_path = output_dir / "ai_summary.json"
     generated_at = datetime.now(JST).isoformat()
-    api_key = os.getenv("GEMINI_API_KEY")
+    config = _load_config(root).get("ai_summary", {})
 
-    if not api_key:
+    if not can_run(config):
         output_path.write_text(
             json.dumps(_build_skipped_payload(generated_at), ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -201,9 +161,9 @@ def run(root: Path) -> None:
         logging.info("[ai_summary] skipped: GEMINI_API_KEY is not set")
         return
 
-    config = _load_config(root).get("ai_summary", {})
     model = str(config.get("model") or DEFAULT_MODEL)
     summaries = {}
+    providers = set()
     errors = {}
     usage_tracker = GeminiUsageTracker(model)
 
@@ -214,10 +174,13 @@ def run(root: Path) -> None:
 
     for key, prompt in tasks.items():
         try:
-            text, usage = _call_gemini(api_key=api_key, model=model, prompt=prompt)
-            summaries[key] = text
-            usage_tracker.add(usage)
-            logging.info("[ai_summary] generated %s with %s", key, model)
+            result = generate(prompt, config, DEFAULT_MODEL, cwd=root)
+            summaries[key] = result.text
+            usage_tracker.add(result.gemini_usage)
+            providers.add(result.provider)
+            if result.fallback_reason:
+                errors[f"{key}_claude"] = result.fallback_reason
+            logging.info("[ai_summary] generated %s with %s (%s)", key, result.provider, result.model)
         except Exception as exc:
             errors[key] = str(exc)
             logging.error("[ai_summary] %s failed: %s", key, exc)
@@ -228,6 +191,7 @@ def run(root: Path) -> None:
             "generated_at": generated_at,
             "status": "ok",
             "model": model,
+            "provider": "+".join(sorted(providers)),
             "data": summaries,
             "gemini_cost_jpy": round(usage_tracker.cost_jpy, 3),
             "gemini_call_count": usage_tracker.call_count,
@@ -240,6 +204,7 @@ def run(root: Path) -> None:
             "generated_at": generated_at,
             "status": "error",
             "model": model,
+            "provider": provider_of(config),
             "error": errors,
             "data": None,
         }

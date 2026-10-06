@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from modules.ai_summary import _call_gemini
+from modules.llm_client import can_run, generate, send_failure_mail
 from modules.gemini_pricing import GeminiUsageTracker
 from modules.mail_gmail import send_html_mail
 from modules.sumo_news import HISTORY_DIR_NAME, _dedupe_stories
@@ -141,8 +141,7 @@ def run(root: Path) -> None:
         logging.info("[sumo_news_digest] skipped: not a scheduled digest day")
         return
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
+    if not can_run(config):
         payload = {
             "module": "sumo_news_digest",
             "generated_at": generated_at,
@@ -171,8 +170,9 @@ def run(root: Path) -> None:
     prompt = _build_prompt(items, lookback_days)
     usage_tracker = GeminiUsageTracker(model)
     try:
-        text, usage = _call_gemini(api_key=api_key, model=model, prompt=prompt)
-        usage_tracker.add(usage)
+        llm = generate(prompt, config, DEFAULT_MODEL, cwd=root)
+        text = llm.text
+        usage_tracker.add(llm.gemini_usage)
         data = _extract_json(text)
         raw_topics = data.get("topics") or []
     except Exception as exc:
@@ -183,7 +183,8 @@ def run(root: Path) -> None:
             "error": str(exc),
         }
         output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.error("[sumo_news_digest] Gemini call failed: %s", exc)
+        logging.error("[sumo_news_digest] LLM call failed: %s", exc)
+        send_failure_mail("相撲ニュースまとめ", str(exc), config)
         return
 
     # The URL is resolved from our own fetched data by index, never trusted
@@ -211,7 +212,8 @@ def run(root: Path) -> None:
         "module": "sumo_news_digest",
         "generated_at": generated_at,
         "status": "ok",
-        "model": model,
+        "model": model if llm.provider == "gemini" else llm.model,
+        "provider": llm.provider,
         "cost_jpy": round(usage_tracker.cost_jpy, 2),
         "lookback_days": lookback_days,
         "item_count": len(items),
