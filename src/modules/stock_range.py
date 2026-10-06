@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yfinance as yf
 
+from modules.market_realtime import fetch_offhours_nikkei, fetch_yahoo_top_indices
 from modules.stock_nikkei import _fetch_nikkei_futures_data
 from modules.stock_watchlist import _daily_changes, _range_position
 
@@ -56,27 +57,38 @@ def _x_trend_finding(item: dict, x_trend_hits: dict[str, dict]) -> dict | None:
 _SENTIMENT_BONUS = {"strong_positive": 30, "positive": 20}
 
 
-def _market_change_pct() -> float | None:
-    """Overnight Nikkei futures move, used to down-weight candidates ahead
-    of a broad-selloff day. Deliberately uses nikkei_futures, not
-    nikkei_average: stock_range runs at 06:45, before the Tokyo cash
-    session opens, so the day session's change_pct doesn't exist yet at
-    scoring time - using it would be scoring with information from the
-    future. A 2026-07-28 check showed the reversal signal (buy the 30-day
-    low) going 0/9 on a day futures were down sharply overnight - deep-low
-    stocks got sold even harder, not bought back, because the weakness was
-    market-wide rather than stock-specific.
+def _market_change_pct() -> tuple[float | None, dict]:
+    """Overnight Nikkei move, used to down-weight candidates ahead of a
+    broad-selloff day (and bonus them ahead of a strong one). stock_range
+    runs at 06:45, before the Tokyo cash session opens, so the day session's
+    change doesn't exist yet - using it would be scoring with information
+    from the future. A 2026-07-28 check showed the reversal signal (buy the
+    30-day low) going 0/9 on a day the market was down sharply overnight.
 
-    Fetched live via yfinance rather than read from output/stock_nikkei.json:
-    that file is only refreshed by stock_nikkei's own schedule slots
-    (07:00/09:30/12:15/22:45), none of which run at 06:45, so reading it
-    here would return the previous evening's snapshot - stale by up to 8
-    hours of further overnight futures movement."""
+    Since 2026-10-06 the primary source is the "日経時間外" level people post
+    on X (read via Yahoo!リアルタイム検索), compared with the previous Nikkei
+    close from the Yahoo!ファイナンス top page. Falls back to the CME dollar
+    futures (NKD=F, fetched live - output/stock_nikkei.json isn't refreshed
+    before 07:00) when no recent, plausible post is found.
+
+    Returns (change_pct, source info); the info goes into the payload so the
+    report can say where the number came from."""
     try:
-        return float(_fetch_nikkei_futures_data()["change_pct"])
+        top = fetch_yahoo_top_indices()["nikkei"]
+        now = datetime.now(JST)
+        # Before the open the top page still shows the previous session's
+        # close; after it, back out today's change to get that close.
+        previous_close = top["value"] if now.hour < 9 else top["value"] - top["change"]
+        reading = fetch_offhours_nikkei(previous_close, now)
+        return float(reading["change_pct"]), reading
+    except Exception as exc:
+        logging.warning("[stock_range] 日経時間外 via realtime search unavailable, using CME futures: %s", exc)
+    try:
+        futures = _fetch_nikkei_futures_data()
+        return float(futures["change_pct"]), {"source": "cme_futures", "label": "日経225先物(CME・シカゴ)"}
     except Exception as exc:
         logging.warning("[stock_range] nikkei futures fetch failed: %s", exc)
-        return None
+        return None, {}
 
 
 def _market_adjustment(market_change_pct: float | None, factor: float, cap: float) -> tuple[float, str]:
@@ -444,7 +456,7 @@ def run(root: Path) -> None:
     today_label = now.strftime("%Y-%m-%d")
     items_by_ticker = {item.get("ticker"): item for item in items}
     prediction_records = _evaluate_predictions(root, today_label, items_by_ticker)
-    market_change_pct = _market_change_pct()
+    market_change_pct, market_change_source = _market_change_pct()
     # Scoring candidates are Japan-listed stocks only: the momentum/reversal
     # score never had a market-appropriate way to compare US tickers against
     # the Nikkei-futures-based market penalty, so mixing markets here just
@@ -460,6 +472,7 @@ def run(root: Path) -> None:
         "status": "ok",
         "ticker_count": len(items),
         "market_change_pct": market_change_pct,
+        "market_change_source": market_change_source,
         "index_items": _fetch_index_range_items(),
         "items": [_item_payload(item, x_trend_hits) for item in items],
         "momentum_candidates": _candidate_payload(momentum),
