@@ -75,7 +75,7 @@
     "onedrive_check": true,
     "disk_usage": true,
     "claude_usage": true,
-    "note_draft_post": true,
+    "note_draft_post": false,
     "radio_guest_check": true,
     "nikkei_constituents": true,
     "report_html": true,
