@@ -69,6 +69,25 @@ certifi。他は標準ライブラリ)をインストールする。Python本体
 15分おきにポーリングして、`config.json`の`batch_schedule`に一致する時刻だけ
 実処理を行う仕組みなので、この1本を登録すれば十分。
 
+登録後、タスクの設定が次のとおりになっているか確認する(2026-10-06 追記):
+
+| 設定 | 値 | 理由 |
+|---|---|---|
+| 実行時間の上限(ExecutionTimeLimit) | **90分**(`PT1H30M`) | `radio_guest_check`(Grokに最大8問、実測約18分)や `web_watch` など Chrome を使うモジュールは10分を超える。10分だと途中で強制終了され、メールも届かず毎日やり直しになる |
+| 繰り返し間隔 | 15分 | `batch_schedule` の時刻判定の前提 |
+| 多重起動 | 新しいインスタンスを開始しない(IgnoreNew) | 長い処理の間の次の起動は見送られる(その間に予定がなければ問題なし) |
+| 実行ユーザー | ログオンしているときのみ実行 | Chrome(Claude in Chrome)を使うモジュールは、同じデスクトップのセッションでないと動かない |
+
+`files1/setup_task.ps1` は 2026-10-06 に上限を10分→90分へ修正済み。古い版のスクリプトで
+登録した場合や、登録済みのタスクだけを直す場合は、管理者の PowerShell で次を実行する:
+
+```powershell
+$s = (Get-ScheduledTask -TaskName "NightlyBatchNotify").Settings
+$s.ExecutionTimeLimit = "PT90M"
+Set-ScheduledTask -TaskName "NightlyBatchNotify" -Settings $s
+(Get-ScheduledTask -TaskName "NightlyBatchNotify").Settings.ExecutionTimeLimit   # PT1H30M なら OK
+```
+
 ### 6. 動作確認
 
 - `src/run.bat`を手動実行し、`src/logs/task_runner_*.log`と

@@ -50,6 +50,9 @@ state/以下は「リセットされてもいい」なら省略してよい(履�
 5. `src/setup_windows.bat`を実行(venv構築・依存パッケージインストール)
 6. `files1/setup_task.ps1`のパスを書き換えて、管理者権限のPowerShellで実行
    (タスクスケジューラ登録。15分おきポーリングの仕組み)
+   - 登録後、実行時間の上限が **90分**(`PT1H30M`)になっているか確認する。10分のままだと
+     `radio_guest_check` などChromeを使うモジュールが途中で強制終了される
+     (確認・修正コマンドは `new_pc_setup_instructions.md` の「5. タスクスケジューラに登録する」)
 7. OneDriveパス等、環境依存の設定を確認・修正
 8. 動作確認: `run.bat`を手動実行するか、`main.py --force --schedule <時刻>`で
    任意のスケジュールを強制実行してログを確認する
