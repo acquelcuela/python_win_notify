@@ -286,6 +286,7 @@ def _target_html(result: dict) -> str:
     for item in data.get("items") or []:
         sections.setdefault(item.get("section", ""), []).append(item)
     cell = 'style="padding:3px 8px;border-bottom:1px solid #e5e7eb;"'
+    listing = []
     for section, items in sections.items():
         rows = "".join(
             f'<tr><td {cell}>{_link(i["name"], i.get("url"))}</td>'
@@ -294,14 +295,22 @@ def _target_html(result: dict) -> str:
             + f'</td><td {cell} style="color:#b45309;">{html.escape(" ".join(i.get("badges") or []))}</td></tr>'
             for i in items
         )
-        parts.append(
+        listing.append(
             f'<div style="margin-top:12px;font-weight:bold;">{html.escape(section)}({len(items)}件)</div>'
             f'<table style="border-collapse:collapse;font-size:13px;">{rows}</table>'
         )
     campaigns = data.get("campaigns") or []
     if campaigns:
         items_html = "".join(f"<li>{_link(c['title'], c.get('url'))}</li>" for c in campaigns)
-        parts.append(f'<div style="margin-top:12px;font-weight:bold;">キャンペーン・告知({len(campaigns)}件)</div><ul style="font-size:13px;">{items_html}</ul>')
+        listing.append(f'<div style="margin-top:12px;font-weight:bold;">キャンペーン・告知({len(campaigns)}件)</div><ul style="font-size:13px;">{items_html}</ul>')
+    if listing:
+        # 変化点が主役なので、現在の全掲載は閉じたアコーディオンに格納する
+        parts.append(
+            '<details style="margin-top:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;">'
+            '<summary style="cursor:pointer;font-weight:bold;color:#0f172a;">現在の掲載一覧'
+            f'<span style="color:#6b7280;font-weight:normal;font-size:12px;"> (商品{len(data.get("items") or [])}件・告知{len(campaigns)}件)</span></summary>'
+            f'{"".join(listing)}</details>'
+        )
     return "".join(parts)
 
 
