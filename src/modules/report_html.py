@@ -1491,6 +1491,38 @@ def run(root: Path) -> None:
 """
     output_path.write_text(document, encoding="utf-8")
     logging.info("[report_html] wrote %s", output_path)
+    _archive_report(root, document, now)
 
+
+# report.html is rebuilt five times a day and stock_range.json every
+# morning, so the exact report (and candidate list) a decision was based on
+# would otherwise be gone by the evening review (user request 2026-10-07).
+# The X-trend lists are already kept per run in history/stock_x_trends_runs/.
+REPORT_ARCHIVE_DIR = Path("output") / "history" / "reports"
+STOCK_RANGE_ARCHIVE_DIR = Path("output") / "history" / "stock_range"
+ARCHIVE_RETENTION_DAYS = 120
+
+
+def _archive_report(root: Path, document: str, now: datetime) -> None:
+    try:
+        report_dir = root / REPORT_ARCHIVE_DIR
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / f"report_{now:%Y%m%d_%H%M}.html").write_text(document, encoding="utf-8")
+
+        range_payload = _load_json(root / "output" / "stock_range.json")
+        if range_payload and str(range_payload.get("generated_at", "")).startswith(now.strftime("%Y-%m-%d")):
+            range_dir = root / STOCK_RANGE_ARCHIVE_DIR
+            range_dir.mkdir(parents=True, exist_ok=True)
+            (range_dir / f"stock_range_{now:%Y%m%d}.json").write_text(
+                json.dumps(range_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+
+        cutoff = (now - timedelta(days=ARCHIVE_RETENTION_DAYS)).strftime("%Y%m%d")
+        for directory, prefix in ((REPORT_ARCHIVE_DIR, "report_"), (STOCK_RANGE_ARCHIVE_DIR, "stock_range_")):
+            for path in (root / directory).glob(f"{prefix}*"):
+                if path.stem[len(prefix):len(prefix) + 8] < cutoff:
+                    path.unlink()
+    except OSError as exc:
+        logging.warning("[report_html] report archive failed: %s", exc)
 
 

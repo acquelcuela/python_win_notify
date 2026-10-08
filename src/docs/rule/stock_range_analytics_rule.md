@@ -129,6 +129,21 @@ Xトレンド銘柄(`stock_x_trends`、255件・37営業日)の検証結果:
 レポートの30日レンジ欄とXトレンド欄に「売買タイミングの目安」として表示する(数字は固定値)。
 上げ相場の約2か月分のデータなので、下げ相場の期間を含めて見直す。
 
+## 振り返り(考察)に使うログ(2026-10-07〜)
+
+朝・昼の判断を夕方に答え合わせできるよう、次が残る:
+| 内容 | 場所 | 保存期間 |
+|---|---|---|
+| 送ったレポートそのもの(07:00/09:30/12:15/17:30/23:00) | `output/history/reports/report_YYYYMMDD_HHMM.html` | 120日 |
+| 30日レンジの候補一覧(06:45算出、時間外の値と取得元を含む) | `output/history/stock_range/stock_range_YYYYMMDD.json` | 120日 |
+| Xトレンドの一覧(07:00・23:00の実行ごと) | `output/history/stock_x_trends_runs/stock_x_trends_YYYYMMDD_HHMM.json` | 無期限 |
+| 30日レンジ候補の的中・当日の地合い | `state/stock_range_predictions.json` | 90日 |
+| Xトレンド銘柄の的中 | `state/stock_x_trends_predictions.json` | - |
+| 自分用の考察メモ | `trade_notes/`(git管理外) | - |
+
+※ `output/stock_x_trends.json` は23:00に翌日向けの一覧へ置き換わるので、その日の朝の一覧は
+  `stock_x_trends_runs/` の `_0700` を見る。
+
 ## 継続して見ること
 
 - 上記の保留ルールは、件数が増えるたびに`stock_range_scoring_todo.txt`の

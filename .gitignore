@@ -50,3 +50,6 @@ note/
 # Personal values (local paths, account names, personal lists) merged over src/config.json;
 # see src/config.local.example.json
 src/config.local.json
+
+# Personal daily trade notes (morning analyses for evening review)
+trade_notes/
