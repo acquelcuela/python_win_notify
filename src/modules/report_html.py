@@ -648,6 +648,7 @@ def _stock_range_score_section(root: Path) -> str:
       <div class="muted">⭐特別注目銘柄: 同じ型(モメンタム/リバーサル)で{SPECIAL_WATCH_MIN_N}回以上候補に出て、的中率が{SPECIAL_WATCH_HIT_RATE_PCT:.0f}%を超えた銘柄。カードを金色で強調表示します(基準は月1回程度見直し)。</div>
       {market_note}
       {_market_outlook_block(market_stats, market_change_pct)}
+      {_timing_guide_block(RANGE_TIMING_GUIDE)}
       <h3>モメンタム型(上昇継続を期待)</h3>
       {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], "momentum", special_watch, market_stats)}
       <h3>リバーサル型(反発を期待)</h3>
@@ -1027,6 +1028,41 @@ def _dividend_section(root: Path) -> str:
 # 数字は固定(件数が増えたら検証し直して更新する)。
 X_GAP_CHASE_PCT = 3.0
 
+# 売買タイミングの目安(2026-10-06の検証: 2026-08〜10の48営業日、1時間足で
+# 寄り付き=9時台の始値、10時=9時台の終値、15時=14時台の終値として計算)。
+# ユーザーの売買パターン「朝イチで買って10時までに売る/15時までに売る」に
+# 合わせた目安。数字は固定(上げ相場の約2か月分なので、件数が増えたら見直す)。
+# 買う時刻は15分足でも比較した(8/10〜10/6の38営業日、9:00〜12:30の8通り×15時売り):
+# 寄り付きちょうど(9:00)はモメンタム型・煽り系で最も不利、15分待つだけで改善し、
+# モメンタム型は10時が最良(54%)。Xの材料系だけは逆に9:00が最良(待つほど利幅が減る)。
+RANGE_TIMING_GUIDE = (
+    "<b>寄り付きちょうど(9:00)には買わない</b>。モメンタム型は9:00買い→15時売りが最も不利(プラス48%)",
+    "<b>モメンタム型は10時ごろに買う→15時に売る</b>(プラス54〜57%)。"
+    "寄り付きから10時までに2%以上下げていれば60%",
+    "リバーサル型はどの時刻に買っても比較的よい(15時売りでプラス54〜71%、件数は少なめ)",
+    "寄り付きで買ってしまった場合: <b>10時にプラスなら15時まで持つ</b>(79%がプラスのまま終了)、"
+    "<b>マイナスなら10時で売る</b>(15時にプラスへ戻るのは25%)",
+    "日経平均が寄り付きから10時までに0.5%以上下げた日は、10時に買う→15時がプラス57%"
+    "(日経平均自体も15日中11日で戻した)",
+)
+X_TIMING_GUIDE = (
+    "<b>◎材料系(positive)は朝イチ(9:00〜9:15)に買う→15時に売る</b>(プラス66〜67%、平均+1%前後)。"
+    "待つほど利幅が減る(11時買いは+0.4%)",
+    "◎材料系を買ったら: <b>10時にプラスなら15時まで持つ</b>(94%がプラスのまま終了)、"
+    "マイナスなら10時で売る(15時にプラスは38%)",
+    "<b>⚠煽り系・寄り付きで+3%以上値が飛んだ銘柄は見送る</b>。"
+    "9:00に買うと最悪(煽り系はプラス39%)、時刻をずらしても勝てない(41〜48%)",
+)
+
+
+def _timing_guide_block(lines: tuple[str, ...]) -> str:
+    items = "".join(f"<li>{line}</li>" for line in lines)
+    return (
+        '<div style="margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;">'
+        "<div style=\"font-weight:bold;\">売買タイミングの目安(過去約2か月・1時間足と15分足で検証)</div>"
+        f'<ul style="margin:4px 0 0 18px;padding:0;">{items}</ul></div>'
+    )
+
 
 def _x_trend_opening_gaps(tickers: list[str]) -> dict[str, float]:
     """Today's opening gap (previous close -> today's open, %) per 4-digit code.
@@ -1182,6 +1218,7 @@ def _stock_x_trends_section(root: Path) -> str:
       <div class="muted">検索時刻: {generated_label}(1日1回・朝07:00のみ検索し、終日この結果を表示します)</div>
       {staleness_note}
       <div class="muted">目印は過去の検証(寄り付きで買って大引けで売った場合、255件)から: ◎=材料系で寄り付きの値の飛びが小さい(日経平均に勝った60%)、⚠=煽り系や寄り付きで大きく値が飛んだ銘柄(勝率3〜4割)。寄り付きの値の飛びは09:00以降のレポートで表示します。</div>
+      {_timing_guide_block(X_TIMING_GUIDE)}
       <h3>共通キーワード</h3>
       <div style="margin-top:8px;">{keyword_html}</div>
       <h3>銘柄別結果</h3>
@@ -1454,5 +1491,6 @@ def run(root: Path) -> None:
 """
     output_path.write_text(document, encoding="utf-8")
     logging.info("[report_html] wrote %s", output_path)
+
 
 
