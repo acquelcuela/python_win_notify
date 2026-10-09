@@ -115,7 +115,7 @@ def can_run(settings: dict) -> bool:
     return provider_of(settings) == "claude" or bool(os.getenv("GEMINI_API_KEY"))
 
 
-def _call_claude(prompt: str, model: str | None, cwd: Path | None) -> str:
+def _call_claude(prompt: str, model: str | None, cwd: Path | None, timeout_seconds: int = CLAUDE_TIMEOUT_SECONDS) -> str:
     claude_bin = _find_claude_binary()
     if not claude_bin:
         raise RuntimeError("claude CLI was not found on PATH.")
@@ -134,11 +134,11 @@ def _call_claude(prompt: str, model: str | None, cwd: Path | None) -> str:
         cwd=str(cwd) if cwd else None,
     )
     try:
-        stdout, stderr = proc.communicate(prompt, timeout=CLAUDE_TIMEOUT_SECONDS)
+        stdout, stderr = proc.communicate(prompt, timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         _kill_tree(proc)
         proc.communicate()
-        raise RuntimeError(f"claude CLI timed out after {CLAUDE_TIMEOUT_SECONDS}s.")
+        raise RuntimeError(f"claude CLI timed out after {timeout_seconds}s.")
     if proc.returncode != 0:
         raise RuntimeError(f"claude CLI exited {proc.returncode}: {(stderr or stdout)[:500]}")
     envelope = json.loads(stdout)

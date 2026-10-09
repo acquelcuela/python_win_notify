@@ -140,6 +140,14 @@ Xトレンド銘柄(`stock_x_trends`、255件・37営業日)の検証結果:
 | 30日レンジ候補の的中・当日の地合い | `state/stock_range_predictions.json` | 90日 |
 | Xトレンド銘柄の的中 | `state/stock_x_trends_predictions.json` | - |
 | 自分用の考察メモ | `trade_notes/`(git管理外) | - |
+| 売買考察(自動) | `trade_notes/YYYY-MM-DD_0800_考察.txt` / `_0945_考察.txt` / `_1300_考察.txt` / `_1800_振り返り.txt` | - |
+| 売買考察のデータ(集めた数字・メール文・ログ文、実行ごと) | `output/history/trade_review/YYYYMMDD_HHMM_<時間帯>.json`(+ `_prompt.txt`) | 120日 |
+| 寄りで+3%以上値が飛んだXトレンド銘柄の記録 | `state/trade_review_gap_log.json`(夕方の考察が毎日追記) | - |
+
+売買考察は `modules/trade_review.py`(データと考察を `output/trade_review.json` に保存)と
+`modules/trade_review_mail.py`(そのJSONを読んでメール)が平日 08:00(朝)・09:45(寄り付き後)・13:00(昼)・18:00(夕方)に自動で書いてメールする
+(2026-10-08〜)。数字は Python が集め、文章は Claude(`claude -p`)。このルールファイルをそのまま判断基準として渡すので、
+ルールを更新すれば考察も追従する。書き方・観点は `prompts/trade_review/`(common.md と朝・昼・夕方の各ファイル)で直す。
 
 ※ `output/stock_x_trends.json` は23:00に翌日向けの一覧へ置き換わるので、その日の朝の一覧は
   `stock_x_trends_runs/` の `_0700` を見る。
