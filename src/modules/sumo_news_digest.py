@@ -8,9 +8,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from modules.llm_client import can_run, generate, send_failure_mail
+from modules.llm_client import can_run, generate, provider_of
 from modules.gemini_pricing import GeminiUsageTracker
-from modules.mail_gmail import send_html_mail
 from modules.sumo_news import HISTORY_DIR_NAME, _dedupe_stories
 
 
@@ -180,11 +179,12 @@ def run(root: Path) -> None:
             "module": "sumo_news_digest",
             "generated_at": generated_at,
             "status": "error",
+            "provider": provider_of(config),
             "error": str(exc),
         }
+        # sumo_news_digest_mail turns this into a 【失敗】 mail.
         output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         logging.error("[sumo_news_digest] LLM call failed: %s", exc)
-        send_failure_mail("相撲ニュースまとめ", str(exc), config)
         return
 
     # The URL is resolved from our own fetched data by index, never trusted
@@ -229,47 +229,6 @@ def run(root: Path) -> None:
     history_dir.mkdir(parents=True, exist_ok=True)
     history_path = history_dir / f"sumo_news_digest_{now.strftime('%Y%m%d')}.json"
     history_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
-    app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
-    mail_to = os.getenv("MAIL_TO", "").strip()
-    if not (gmail_address and app_password and mail_to):
-        logging.warning("[sumo_news_digest] mail skipped: missing Gmail settings")
-        return
-
-    def _topic_card(topic: dict) -> str:
-        headline = html.escape(topic["headline"])
-        body_text = html.escape(topic["body"])
-        url = topic.get("source_url")
-        link_html = (
-            f'<div style="margin-top:6px;"><a href="{html.escape(url)}" target="_blank" rel="noopener" style="font-size:12px;color:#2563eb;">情報元</a></div>'
-            if url
-            else ""
-        )
-        return f"""
-        <div style="margin-top:10px;padding:10px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
-          <div style="font-weight:bold;font-size:15px;">{headline}</div>
-          <div style="color:#334155;font-size:13px;margin-top:4px;line-height:1.6;">{body_text}</div>
-          {link_html}
-        </div>
-        """
-
-    topics_html = "".join(_topic_card(t) for t in topics) or '<div style="color:#6b7280;">要約できる話題がありませんでした。</div>'
-    body = f"""
-    <html>
-      <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
-        <h2>大相撲ニュース まとめ({lookback_days}日分)</h2>
-        <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点 / 記事{len(items)}件から{len(topics)}トピックに要約</div>
-        {topics_html}
-      </body>
-    </html>
-    """
-    subject = f"大相撲ニュース まとめ {now.strftime('%Y-%m-%d')}"
-    try:
-        send_html_mail(gmail_address, app_password, mail_to, subject, body)
-        logging.info("[sumo_news_digest] sent digest mail")
-    except Exception as exc:
-        logging.error("[sumo_news_digest] mail send failed: %s", exc)
 
 
 if __name__ == "__main__":

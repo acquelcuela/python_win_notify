@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import html
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from modules.mail_gmail import send_html_mail
 from modules.sumo_banzuke import auto_basho_code
-from modules.sumo_news_mail import _hoshitori_table, _id_color_map, _leaderboard, _load_json, _ranked_groups
+from modules.sumo_news_mail import _load_json
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -47,10 +44,10 @@ def run(root: Path) -> None:
 
     # This marker is the only thing that makes the mail/archive a one-time
     # event - once it exists for this basho code, every later run this
-    # module skips instead of re-sending. It's only written once the mail
-    # has actually gone out (or there are no Gmail settings to send with at
-    # all), so a transient SMTP failure gets retried the next day rather
-    # than being silently given up on.
+    # module skips instead of re-sending. sumo_basho_final_mail writes it
+    # only once the mail has actually gone out (or there are no Gmail
+    # settings to send with at all), so a transient SMTP failure gets
+    # retried the next day rather than being silently given up on.
     marker_path = root / "state" / f"sumo_basho_final_{code}.json"
     if marker_path.exists():
         _skip(output_path, generated_at, f"already reported for {code} ({marker_path.name} exists).")
@@ -97,67 +94,18 @@ def run(root: Path) -> None:
     }
     archive_path.write_text(json.dumps(archive_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    divisions = (
-        (banzuke.get("makuuchi") or [], "幕内"),
-        (banzuke.get("juryo") or [], "十両"),
-        (banzuke.get("makushita") or [], "幕下"),
-    )
-    sections = ""
-    for entries, label in divisions:
-        if not entries:
-            continue
-        groups, top_records, worst_records = _ranked_groups(entries, results, final_day_no)
-        id_colors = _id_color_map(groups, top_records, worst_records)
-        sections += _leaderboard(entries, results, final_day_no, label)
-        sections += _hoshitori_table(entries, results, final_day_no, label, id_colors)
-
-    body = f"""
-    <html>
-      <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
-        <h2>{html.escape(title)} 最終成績</h2>
-        <div style="color:#6b7280;font-size:12px;">千秋楽(全{final_day_no}日目)終了時点</div>
-        {sections}
-      </body>
-    </html>
-    """
-
-    gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
-    app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
-    mail_to = os.getenv("MAIL_TO", "").strip()
-    missing = [
-        name
-        for name, value in [
-            ("GMAIL_ADDRESS", gmail_address),
-            ("GMAIL_APP_PASSWORD", app_password),
-            ("MAIL_TO", mail_to),
-        ]
-        if not value
-    ]
-
-    mail_sent = False
-    if missing:
-        logging.warning("[sumo_basho_final] mail skipped: missing Gmail settings: %s", ", ".join(missing))
-    else:
-        subject = f"{title} 最終成績"
-        try:
-            send_html_mail(gmail_address, app_password, mail_to, subject, body)
-            mail_sent = True
-            logging.info("[sumo_basho_final] sent final results mail for %s", code)
-        except Exception as exc:
-            logging.error("[sumo_basho_final] mail send failed: %s", exc)
-
-    if mail_sent or missing:
-        marker_path.parent.mkdir(parents=True, exist_ok=True)
-        marker_path.write_text(
-            json.dumps({"code": code, "reported_at": generated_at, "mail_sent": mail_sent}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
+    # sumo_basho_final_mail reads this and the archive, sends the mail, and
+    # only then writes the marker - so a failed send is retried the next day.
     result = {
         "module": "sumo_basho_final",
         "generated_at": generated_at,
         "status": "ok",
-        "reason": f"archived final results for {code} to {archive_path.name}; mail_sent={mail_sent}.",
+        "code": code,
+        "title": title,
+        "final_day_no": final_day_no,
+        "archive_path": str(archive_path),
+        "marker_path": str(marker_path),
+        "reason": f"archived final results for {code} to {archive_path.name}.",
     }
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
