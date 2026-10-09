@@ -4,7 +4,7 @@
 
 Cowork版からの変更点:
   - 対象期間は「実行日から5日分」(本日〜4日後)。Cowork版は10日後まで
-  - 3日に1回(前回成功から interval_days 日以上)、13:00 に実行
+  - 3日に1回(前回成功から interval_days 日以上)、11:00 に実行
   - Grok は grok_web(grok.com、毎回新しい会話)経由。「同じスレッドで言い換え
     質問」はできないため、言い換え検索は元の質問+別の情報源を指示した
     独立した質問として送る
@@ -367,7 +367,7 @@ def run(root: Path, force: bool = False) -> None:
     start, end = today, today + timedelta(days=settings["days_ahead"])
     results = _run_queries(root, _queries(start, end, settings["followed_programs"]))
     if not any(r["status"] == "ok" for r in results):
-        # Leave last_success_date alone so tomorrow's 13:00 tries again -
+        # Leave last_success_date alone so tomorrow's 11:00 tries again -
         # but still mail, so the failure itself is visible.
         _write("error", error="No Grok query succeeded.", results=results)
         logging.error("[radio_guest_check] no Grok query succeeded")
