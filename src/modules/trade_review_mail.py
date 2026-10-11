@@ -52,6 +52,8 @@ def _parse_series(raw: str):
     """'結果: 寄り付きの値の飛び -2.0% / 寄り→10時 -1.3% / ...' -> (row label, [(column, value)], note).
     Only lines with 3+ "label value%" segments are treated as a time series."""
     stripped = raw.strip().lstrip("-・ ").strip()
+    # Claude sometimes writes a flat value without a sign ("0.0%"); treat it as ±0.0%.
+    stripped = re.sub(r"(?<![\d.+\-−±])(0(?:\.0+)?)%", r"±\1%", stripped)
     prefix, sep, rest = stripped.partition(":")
     if not sep:
         prefix, sep, rest = stripped.partition(":")
