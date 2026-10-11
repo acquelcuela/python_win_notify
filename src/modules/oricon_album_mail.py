@@ -101,6 +101,67 @@ def _company_accordion(company: str, items: list[dict]) -> str:
     """
 
 
+# Record-company groups, one mail each, in this order. A company goes to the
+# first group with a name fragment it contains; everything else is "その他".
+# Overridable via config.json oricon_album_mail.company_groups.
+DEFAULT_COMPANY_GROUPS = [
+    {
+        "name": "主要レコード会社",
+        "contains": [
+            "ソニー", "Sony", "エイベックス", "avex", "ユニバーサル", "Universal", "ワーナー", "Warner",
+            "キングレコード", "ビクター", "Victor", "ポニーキャニオン", "コロムビア", "徳間", "テイチク",
+            "日本クラウン", "バンダイナムコ", "ランティス", "アニプレックス", "Aniplex", "EMI",
+            "FlyingDog", "フライングドッグ", "ドリーミュージック",
+        ],
+    },
+    {"name": "ウルトラ・ヴァイヴ", "contains": ["ウルトラ・ヴァイヴ"]},
+]
+REST_GROUP_NAME = "その他"
+
+
+def _split_by_company_group(items: list[dict], config: dict) -> list[tuple[str, list[dict]]]:
+    groups = config.get("company_groups") or DEFAULT_COMPANY_GROUPS
+    buckets: dict[str, list[dict]] = {g["name"]: [] for g in groups}
+    buckets[REST_GROUP_NAME] = []
+    for item in items:
+        company = (item.get("company") or "").lower()
+        target = next(
+            (g["name"] for g in groups if any(word.lower() in company for word in g.get("contains") or [])),
+            REST_GROUP_NAME,
+        )
+        buckets[target].append(item)
+    return list(buckets.items())
+
+
+def _mail_body(items: list[dict], now: datetime, group_name: str, index: int, total: int, overview: list) -> str:
+    if items:
+        sections = ""
+        for release_date, date_group in _group_by_date(items):
+            accordions = "".join(
+                _company_accordion(company, company_group)
+                for company, company_group in _group_by_company(date_group)
+            )
+            sections += f'<h3 style="margin-top:16px;">{html.escape(_date_label(release_date))}</h3>{accordions}'
+    else:
+        sections = '<div style="color:#6b7280;">対象期間のアルバム新譜情報がありませんでした。</div>'
+    heading = f"アルバム新譜情報(今週〜7週先){' - ' + html.escape(group_name) if group_name else ''}"
+    parts = " / ".join(
+        f"{'<b>' if i == index else ''}{i}. {html.escape(n)} {c}件{'</b>' if i == index else ''}"
+        for i, (n, c) in enumerate(overview, start=1)
+    ) if total > 1 else ""
+    parts_html = f'<div style="color:#334155;font-size:12px;margin-top:4px;">全{total}通: {parts}</div>' if parts else ""
+    return f"""
+    <html>
+      <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
+        <h2>{heading}</h2>
+        <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点</div>
+        {parts_html}
+        {sections}
+      </body>
+    </html>
+    """
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -133,27 +194,6 @@ def run(root: Path) -> None:
         return
 
     items = data.get("data") or []
-    if items:
-        sections = ""
-        for release_date, date_group in _group_by_date(items):
-            accordions = "".join(
-                _company_accordion(company, company_group)
-                for company, company_group in _group_by_company(date_group)
-            )
-            sections += f'<h3 style="margin-top:16px;">{html.escape(_date_label(release_date))}</h3>{accordions}'
-    else:
-        sections = '<div style="color:#6b7280;">対象期間のアルバム新譜情報がありませんでした。</div>'
-
-    body = f"""
-    <html>
-      <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
-        <h2>アルバム新譜情報(今週〜7週先)</h2>
-        <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点</div>
-        {sections}
-      </body>
-    </html>
-    """
-
     gmail_address = os.getenv("GMAIL_ADDRESS", "").strip()
     app_password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
     mail_to = os.getenv("MAIL_TO", "").strip()
@@ -171,6 +211,7 @@ def run(root: Path) -> None:
         "generated_at": generated_at,
         "status": "ok",
         "item_count": len(items),
+        "mails": [],
     }
     if missing:
         result["status"] = "error"
@@ -179,19 +220,26 @@ def run(root: Path) -> None:
         logging.warning("[oricon_album_mail] mail skipped: missing Gmail settings: %s", ", ".join(missing))
         return
 
-    subject = f"アルバム新譜情報 {now.strftime('%Y-%m-%d')}"
-    try:
-        send_html_mail(gmail_address, app_password, mail_to, subject, body)
-        logging.info("[oricon_album_mail] sent %d album item(s)", len(items))
-    except Exception as exc:
-        result["status"] = "error"
-        result["reason"] = str(exc)
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        logging.error("[oricon_album_mail] mail send failed: %s", exc)
-        return
+    # One mail with everything was too long (366 albums on 2026-10-10, 150 of
+    # them from ウルトラ・ヴァイヴ alone), so it is split into a few mails by
+    # record company group, nothing dropped (user request 2026-10-11).
+    groups = [(name, group) for name, group in _split_by_company_group(items, config) if group]
+    if not groups:
+        groups = [("", [])]
+    for index, (group_name, group_items) in enumerate(groups, start=1):
+        part = f"({index}/{len(groups)} {group_name} {len(group_items)}件)" if group_name else ""
+        subject = f"アルバム新譜情報 {now.strftime('%Y-%m-%d')}{part}"
+        body = _mail_body(group_items, now, group_name, index, len(groups), [(n, len(g)) for n, g in groups])
+        try:
+            send_html_mail(gmail_address, app_password, mail_to, subject, body)
+            result["mails"].append({"subject": subject, "item_count": len(group_items), "status": "sent"})
+            logging.info("[oricon_album_mail] sent %s", subject)
+        except Exception as exc:
+            result["status"] = "error"
+            result["mails"].append({"subject": subject, "item_count": len(group_items), "status": "error", "error": str(exc)})
+            logging.error("[oricon_album_mail] mail send failed (%s): %s", subject, exc)
 
     output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
