@@ -9,7 +9,9 @@ from modules.mail_gmail import send_html_mail
 
 
 JST = timezone(timedelta(hours=9), "JST")
-PLATFORM_LABELS = {"yahoo_auction": "ヤフオク"}
+PLATFORM_LABELS = {"yahoo_auction": "ヤフオク", "rakuma": "ラクマ"}
+# Badge colors by buying-priority tier (best first); the last one also covers "unknown".
+TIER_COLORS = ("#047857", "#2563eb", "#b45309", "#b45309", "#64748b")
 
 
 def _load_json(path: Path) -> dict | None:
@@ -85,6 +87,22 @@ def _item_card(item: dict, target_price: int | None) -> str:
         else ""
     )
     link = f'<a href="{html.escape(url)}" target="_blank" rel="noopener">{title}</a>' if url else title
+    if item.get("tier"):
+        color = TIER_COLORS[min(int(item.get("tier_rank") or 0), len(TIER_COLORS) - 1)]
+        near_target_badge += (
+            f'<span style="background:{color};color:#ffffff;font-weight:bold;font-size:11px;'
+            f'padding:2px 6px;border-radius:4px;margin-right:6px;">{html.escape(str(item["tier"]))}</span>'
+        )
+    if item.get("platform") == "rakuma":
+        # Fixed-price flea-market listing: no bids, no end time.
+        return f"""
+    <div style="{card_style}">
+      <div>{near_target_badge}</div>
+      <span style="font-weight:bold;">{link}</span>
+      <span style="color:#6b7280;font-size:12px;">({html.escape(platform_label)})</span>
+      <div style="color:#334155;font-size:14px;font-weight:bold;margin-top:2px;">価格{price_text}<span style="color:#6b7280;font-weight:normal;">{diff_text}</span></div>
+    </div>
+    """
     return f"""
     <div style="{card_style}">
       <div>{near_target_badge}{store_badge}</div>
@@ -128,9 +146,11 @@ def run(root: Path) -> None:
             # Near-target items first (still stable-ordered within each
             # group), so the ones worth a closer look aren't buried below
             # accessory-only or off-target listings.
+            # Buying-priority tier first when the keyword has tiers (e.g. 第13世代
+            # before 第11世代), then near-target items.
             sorted_items = sorted(
                 new_items,
-                key=lambda item: not _is_near_target(item.get("price"), target_price),
+                key=lambda item: (item.get("tier_rank", 0), not _is_near_target(item.get("price"), target_price)),
             )
             cards = "".join(_item_card(item, target_price) for item in sorted_items)
         else:
@@ -142,7 +162,7 @@ def run(root: Path) -> None:
     body = f"""
     <html>
       <body style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;">
-        <h2>フリマ新着監視(ヤフオク)</h2>
+        <h2>フリマ新着監視(ヤフオク・ラクマ)</h2>
         <div style="color:#6b7280;font-size:12px;">{now.strftime('%Y-%m-%d %H:%M')} JST時点</div>
         {sections}
       </body>

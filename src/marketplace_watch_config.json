@@ -1,7 +1,84 @@
 {
   "keywords": [
-    {"keyword": "HUAWEI WATCH D2", "target_price": 35000},
-    {"keyword": "Redmi 15 5G 8GB 256GB", "target_price": 25000}
+    {
+      "keyword": "HUAWEI WATCH D2",
+      "target_price": 35000
+    },
+    {
+      "keyword": "Redmi 15 5G 8GB 256GB",
+      "target_price": 25000
+    },
+    {
+      "keyword": "Fire HD 10",
+      "platforms": [
+        "yahoo_auction",
+        "rakuma"
+      ],
+      "exclude": [
+        "ケース",
+        "カバー",
+        "フィルム",
+        "Stick",
+        "TV",
+        "充電器",
+        "ケーブル",
+        "第5世代",
+        "5世代",
+        "2015",
+        "HD 8",
+        "HD8",
+        "Fire 7",
+        "ジャンク",
+        "ｼﾞｬﾝｸ",
+        "JUNK"
+      ],
+      "tiers": [
+        {
+          "label": "◎本命 第13世代(2023)",
+          "patterns": [
+            "第13世代",
+            "13世代",
+            "13th",
+            "2023"
+          ]
+        },
+        {
+          "label": "○候補 第11世代(2021)",
+          "patterns": [
+            "第11世代",
+            "11世代",
+            "11th",
+            "2021",
+            "Plus"
+          ],
+          "max_price": 13000
+        },
+        {
+          "label": "△安ければ 第9世代(2019)",
+          "patterns": [
+            "第9世代",
+            "9世代",
+            "9th",
+            "2019"
+          ],
+          "max_price": 7000
+        },
+        {
+          "label": "△安ければ 第7世代(2017)",
+          "patterns": [
+            "第7世代",
+            "7世代",
+            "7th",
+            "2017"
+          ],
+          "max_price": 7000
+        }
+      ],
+      "unknown_tier": {
+        "label": "?世代不明(要確認)",
+        "max_price": 13000
+      }
+    }
   ],
   "max_items": 30
 }

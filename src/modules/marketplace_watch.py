@@ -2,6 +2,7 @@ import html
 import json
 import logging
 import re
+import unicodedata
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,9 @@ from pathlib import Path
 
 JST = timezone(timedelta(hours=9), "JST")
 YAHOO_AUCTION_SEARCH_URL = "https://auctions.yahoo.co.jp/search/search"
+RAKUMA_SEARCH_URL = "https://fril.jp/s"
+DEFAULT_PLATFORMS = ("yahoo_auction",)
+SUPPORTED_PLATFORMS = ("yahoo_auction", "rakuma")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 DEFAULT_MAX_ITEMS = 30
 
@@ -40,16 +44,21 @@ def _normalize_keywords(raw_keywords) -> list[dict]:
         if isinstance(entry, str):
             keyword = entry.strip()
             if keyword:
-                keywords.append({"keyword": keyword, "target_price": None})
+                keywords.append({"keyword": keyword, "target_price": None, "platforms": list(DEFAULT_PLATFORMS), "exclude": []})
         elif isinstance(entry, dict):
             keyword = str(entry.get("keyword") or "").strip()
             if not keyword:
                 continue
             target_price = entry.get("target_price")
+            platforms = [p for p in (entry.get("platforms") or DEFAULT_PLATFORMS) if p in SUPPORTED_PLATFORMS]
             keywords.append(
                 {
                     "keyword": keyword,
                     "target_price": int(target_price) if isinstance(target_price, (int, float)) else None,
+                    "platforms": platforms or list(DEFAULT_PLATFORMS),
+                    "exclude": [str(w) for w in entry.get("exclude") or [] if str(w).strip()],
+                    "tiers": [t for t in entry.get("tiers") or [] if isinstance(t, dict) and t.get("patterns")],
+                    "unknown_tier": entry.get("unknown_tier") if isinstance(entry.get("unknown_tier"), dict) else None,
                 }
             )
     return keywords
@@ -146,6 +155,72 @@ def _fetch_yahoo_auction(keyword: str) -> list[dict]:
     return items
 
 
+def _fetch_rakuma(keyword: str) -> list[dict]:
+    """Rakuma's search page is server-rendered: each result is a
+    <div class="item"> block whose link carries the item name/price/id in
+    data-rat-* attributes. Newest first, on-sale only (transaction=selling).
+    Its keyword search is loose (any word can match - "Fire HD" also returns
+    HDMI cables), so the caller keeps only titles containing every word."""
+    params = urllib.parse.urlencode({"query": keyword, "order": "desc", "sort": "created_at", "transaction": "selling"})
+    request = urllib.request.Request(f"{RAKUMA_SEARCH_URL}?{params}", headers={"User-Agent": USER_AGENT, "Accept-Language": "ja"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        page = response.read().decode("utf-8", errors="replace")
+    items = []
+    for block in page.split('<div class="item">')[1:]:
+        url = re.search(r'href="(https://item\.fril\.jp/[0-9a-f]+)"', block)
+        name = re.search(r'data-rat-item_name="([^"]*)"', block)
+        price = re.search(r'data-rat-price="(\d+)"', block)
+        if not (url and name):
+            continue
+        items.append(
+            {
+                "platform": "rakuma",
+                "id": url.group(1).rsplit("/", 1)[-1],
+                "title": html.unescape(name.group(1)).strip(),
+                "is_store": False,
+                "price": int(price.group(1)) if price else None,
+                "buy_now_price": int(price.group(1)) if price else None,
+                "shipping": None,
+                "end_time": None,
+                "bid_count": None,
+                "url": url.group(1),
+            }
+        )
+    return items
+
+
+def _title_matches(title: str, keyword: str, exclude: list[str]) -> bool:
+    normalized = unicodedata.normalize("NFKC", title).lower()
+    if any(unicodedata.normalize("NFKC", w).lower() in normalized for w in exclude):
+        return False
+    return all(unicodedata.normalize("NFKC", w).lower() in normalized for w in keyword.split())
+
+
+FETCHERS = {"yahoo_auction": _fetch_yahoo_auction, "rakuma": _fetch_rakuma}
+
+
+def _assign_tier(item: dict, tiers: list[dict], unknown_tier: dict | None) -> dict | None:
+    """Optional per-keyword buying priorities (2026-10-11, e.g. Fire HD 10 by
+    generation). The first tier whose patterns appear in the title wins; an
+    item over that tier's max_price is dropped. Titles matching no tier fall
+    into unknown_tier if configured, otherwise they are dropped.
+    The price compared is the buy-it-now price when there is one (Yahoo's
+    current bid can still rise), else the listed price."""
+    normalized = unicodedata.normalize("NFKC", item.get("title") or "").lower()
+    price = item.get("buy_now_price") or item.get("price")
+
+    def _within(tier: dict) -> bool:
+        limit = tier.get("max_price")
+        return not (isinstance(limit, (int, float)) and isinstance(price, int) and price > limit)
+
+    for rank, tier in enumerate(tiers):
+        if any(unicodedata.normalize("NFKC", str(p)).lower() in normalized for p in tier["patterns"]):
+            return {"tier": tier.get("label"), "tier_rank": rank} if _within(tier) else None
+    if unknown_tier and _within(unknown_tier):
+        return {"tier": unknown_tier.get("label") or "世代不明", "tier_rank": len(tiers)}
+    return None
+
+
 def _load_seen(root: Path) -> list[dict]:
     path = root / SEEN_LOG_PATH
     if not path.exists():
@@ -197,12 +272,28 @@ def run(root: Path) -> None:
     warnings = []
     for entry in keywords:
         keyword = entry["keyword"]
-        try:
-            items = _fetch_yahoo_auction(keyword)[:max_items]
-        except Exception as exc:
-            warnings.append(f"{keyword}: {exc}")
-            logging.error("[marketplace_watch] fetch failed for keyword '%s': %s", keyword, exc)
-            continue
+        items = []
+        for platform in entry["platforms"]:
+            try:
+                fetched = FETCHERS[platform](keyword)
+            except Exception as exc:
+                warnings.append(f"{keyword} ({platform}): {exc}")
+                logging.error("[marketplace_watch] %s fetch failed for keyword '%s': %s", platform, keyword, exc)
+                continue
+            # Exclude words apply everywhere; the all-words title check only on
+            # Rakuma, whose search matches loosely (Yahoo's search is already AND).
+            fetched = [
+                item for item in fetched
+                if _title_matches(item.get("title") or "", keyword if platform == "rakuma" else "", entry["exclude"])
+            ]
+            if entry["tiers"]:
+                tiered = []
+                for item in fetched:
+                    tier = _assign_tier(item, entry["tiers"], entry["unknown_tier"])
+                    if tier:
+                        tiered.append({**item, **tier})
+                fetched = tiered
+            items.extend(fetched[:max_items])
 
         new_items = []
         for item in items:
