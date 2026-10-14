@@ -1,6 +1,11 @@
 {
+  "_schedule_notes": [
+    "申し送り(2026-10-14): 毎日 05:00〜05:15 はインターネットにつながらない(外側のルータがリセットされる。LANは生きている)。",
+    "この時間にネットを使う処理(Web取得・Gmail送信・Claude/Gemini)を入れないこと。入れるなら 05:30 以降に。",
+    "詳しくは docs/pc_environment_notes.md"
+  ],
   "batch_schedule": [
-    {"time": "05:00", "days": "all", "modules": ["post_x_magazine"]},
+    {"time": "05:00", "days": "all", "modules": ["post_x_magazine"], "_note": "05:00〜05:15はネット不通。再開するときは05:30以降にずらす"},
     {"time": "06:30", "modules": ["stock_x_trends_web_fetch"]},
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
