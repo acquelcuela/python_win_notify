@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from modules.local_config import load_config as load_local_config
+from modules.market_calendar import schedule_day_key
 
 
 JST = timezone(timedelta(hours=9), "JST")
@@ -259,7 +260,8 @@ def parse_schedule(value: str) -> list[time]:
 
 def is_execution_time(now: datetime) -> tuple[bool, str | None]:
     window_minutes = get_window_minutes()
-    today_key = WEEKDAY_NAMES[now.weekday()]
+    # Market holidays on weekdays are scheduled like a Saturday (see market_calendar).
+    today_key = schedule_day_key(now)
     for entry in parse_schedule_entries():
         if today_key not in entry["days"]:
             continue
@@ -405,7 +407,7 @@ def resolve_modules_for_schedule(schedule_key: str | None) -> list[str]:
     if schedule_key:
         # Several entries can share a time with different days (e.g. a weekday
         # and a weekend 23:00), so prefer the one active today.
-        today_key = WEEKDAY_NAMES[datetime.now(JST).weekday()]
+        today_key = schedule_day_key(datetime.now(JST))
         try:
             entries = [e for e in parse_schedule_entries() if e["time_str"] == schedule_key and e["modules"] is not None]
             entries.sort(key=lambda e: today_key not in e["days"])

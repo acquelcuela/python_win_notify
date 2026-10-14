@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yfinance as yf
 
+from modules.market_calendar import is_trading_day
 from modules.market_realtime import fetch_yahoo_top_indices
 from modules.stock_range import _load_predictions_log, _save_predictions_log
 
@@ -165,6 +166,86 @@ def _backfill_market_day(records: list[dict]) -> bool:
     return filled
 
 
+# Market day (up / mixed / down) for every trading day, whether or not the
+# 30-day-range had candidates that day. Before 2026-10-14 it was only stored
+# on the evaluated candidate records, so days with 0 candidates (10/9, 10/13)
+# had no record at all.
+MARKET_DAY_LOG_PATH = Path("state") / "market_day_log.json"
+MARKET_DAY_LOG_RETENTION_DAYS = 400
+MARKET_DAY_BACKFILL_DAYS = 30
+
+
+def _load_market_day_log(root: Path) -> list[dict]:
+    data = _load_json(root / MARKET_DAY_LOG_PATH)
+    return data if isinstance(data, list) else []
+
+
+def _save_market_day_log(root: Path, entries: list[dict], now: datetime) -> None:
+    cutoff = (now - timedelta(days=MARKET_DAY_LOG_RETENTION_DAYS)).strftime("%Y-%m-%d")
+    entries = sorted((e for e in entries if e.get("date", "") >= cutoff), key=lambda e: e["date"])
+    path = root / MARKET_DAY_LOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _todays_index_changes(today_date) -> tuple[float | None, float | None, str]:
+    # Prefer the Yahoo!ファイナンス top page (real TOPIX, not the 1306
+    # proxy); fall back to yfinance if the page can't be read.
+    try:
+        top = fetch_yahoo_top_indices()
+        return top["nikkei"]["change_pct"], top["topix"]["change_pct"], "yahoo_top"
+    except Exception as exc:
+        logging.warning("[stock_range_eval] Yahoo!ファイナンス top unavailable, using yfinance: %s", exc)
+        return (
+            _fetch_today_change_pct(NIKKEI_TICKER, today_date),
+            _fetch_today_change_pct(TOPIX_PROXY_TICKER, today_date),
+            "yfinance",
+        )
+
+
+def _record_market_day(root: Path, now: datetime, nikkei: float | None, topix: float | None, source: str) -> None:
+    """Records today's market day (after the close) and backfills recent
+    trading days that are missing, from yfinance daily closes."""
+    entries = {e["date"]: e for e in _load_market_day_log(root) if e.get("date")}
+    today_label = now.strftime("%Y-%m-%d")
+    market_day = classify_market_day(nikkei, topix)
+    if market_day:
+        entries[today_label] = {
+            "date": today_label,
+            "market_day": market_day,
+            "nikkei_change_pct": round(nikkei, 2),
+            "topix_change_pct": round(topix, 2),
+            "source": source,
+            "recorded_at": now.isoformat(),
+        }
+    start_date = now.date() - timedelta(days=MARKET_DAY_BACKFILL_DAYS)
+    missing = [
+        d for d in (start_date + timedelta(days=i) for i in range(MARKET_DAY_BACKFILL_DAYS))
+        if is_trading_day(d) and d.strftime("%Y-%m-%d") not in entries
+    ]
+    if missing:
+        start = (start_date - timedelta(days=10)).strftime("%Y-%m-%d")
+        nikkei_days = _daily_change_pcts(NIKKEI_TICKER, start)
+        topix_days = _daily_change_pcts(TOPIX_PROXY_TICKER, start)
+        for d in missing:
+            label = d.strftime("%Y-%m-%d")
+            # yfinance sometimes shows the latest day as exactly 0.0% (or not
+            # at all) before its daily bar is final; leave it for a later run.
+            if 0.0 in (nikkei_days.get(label), topix_days.get(label)):
+                continue
+            backfilled = classify_market_day(nikkei_days.get(label), topix_days.get(label))
+            if backfilled:
+                entries[label] = {
+                    "date": label,
+                    "market_day": backfilled,
+                    "nikkei_change_pct": round(nikkei_days[label], 2),
+                    "topix_change_pct": round(topix_days[label], 2),
+                    "source": "yfinance_daily_backfill",
+                    "recorded_at": now.isoformat(),
+                }
+    _save_market_day_log(root, list(entries.values()), now)
+
+
 def run(root: Path) -> None:
     output_dir = root / "output"
     output_dir.mkdir(exist_ok=True)
@@ -174,6 +255,15 @@ def run(root: Path) -> None:
     today_label = now.strftime("%Y-%m-%d")
 
     _log_market_forecast_accuracy(root, now, today_label)
+
+    is_final_run = now.time() >= MARKET_CLOSE_TIME
+    index_changes = None
+    if is_final_run and is_trading_day(now.date()):
+        index_changes = _todays_index_changes(now.date())
+        try:
+            _record_market_day(root, now, *index_changes)
+        except Exception as exc:
+            logging.warning("[stock_range_eval] market day log failed: %s", exc)
 
     records = _load_predictions_log(root)
     if _backfill_market_day(records):
@@ -199,15 +289,7 @@ def run(root: Path) -> None:
     today_date = now.date()
     market = {}
     if stage == "final":
-        # Prefer the Yahoo!ファイナンス top page (real TOPIX, not the 1306
-        # proxy); fall back to yfinance if the page can't be read.
-        try:
-            top = fetch_yahoo_top_indices()
-            nikkei, topix = top["nikkei"]["change_pct"], top["topix"]["change_pct"]
-        except Exception as exc:
-            logging.warning("[stock_range_eval] Yahoo!ファイナンス top unavailable, using yfinance: %s", exc)
-            nikkei = _fetch_today_change_pct(NIKKEI_TICKER, today_date)
-            topix = _fetch_today_change_pct(TOPIX_PROXY_TICKER, today_date)
+        nikkei, topix, _source = index_changes or _todays_index_changes(today_date)
         market_day = classify_market_day(nikkei, topix)
         if market_day:
             market = {

@@ -297,7 +297,9 @@ def _collect(root: Path, stage: str, now: datetime) -> dict:
             s["moves"] = _moves(p, stage)
     if stage == "evening":
         data["big_gap_x_stocks_history"] = _update_gap_log(root, today, data["x_trends"].get("stocks") or [], prices)
-        day = next((r for r in _load_json(root / "state" / "stock_range_predictions.json") or [] if r.get("logged_date") == today and r.get("market_day")), None)
+        # Daily log (every trading day, 2026-10-14~); candidate records as fallback.
+        day = next((r for r in _load_json(root / "state" / "market_day_log.json") or [] if r.get("date") == today), None) \
+            or next((r for r in _load_json(root / "state" / "stock_range_predictions.json") or [] if r.get("logged_date") == today and r.get("market_day")), None)
         data["market_day_recorded"] = day and {k: day.get(k) for k in ("market_day", "nikkei_change_pct", "topix_change_pct")}
     return data
 
