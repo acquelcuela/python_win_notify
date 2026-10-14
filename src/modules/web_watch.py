@@ -232,6 +232,32 @@ def _save_snapshot(root: Path, target_id: str, snapshot: dict) -> None:
         f.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
 
 
+# Every run, failed ones included, with what changed (the diff the mail was
+# built from) - <id>_history.jsonl only has successful snapshots, so a failed
+# night or "what did the 43 changes consist of" couldn't be looked up later
+# (user request 2026-10-11). Lines older than RUN_LOG_RETENTION_DAYS are dropped.
+RUN_LOG_RETENTION_DAYS = 120
+
+
+def _append_run_log(root: Path, target_id: str, now: datetime, entry: dict) -> None:
+    path = root / STATE_DIR / f"{target_id}_runs.jsonl"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cutoff = (now - timedelta(days=RUN_LOG_RETENTION_DAYS)).isoformat()
+        kept = []
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    if json.loads(line).get("checked_at", "") >= cutoff:
+                        kept.append(line)
+                except json.JSONDecodeError:
+                    continue
+        kept.append(json.dumps({"checked_at": now.isoformat(), **entry}, ensure_ascii=False))
+        path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    except OSError as exc:
+        logging.warning("[web_watch] run log failed: %s", exc)
+
+
 def _yen(value) -> str:
     return f"¥{value:,}" if isinstance(value, int) else "-"
 
@@ -355,6 +381,7 @@ def _watch_target(root: Path, target: dict, now: datetime) -> dict:
               "elapsed_seconds": round(time.monotonic() - start, 1)}
     if not extracted["ok"]:
         logging.error("[web_watch] %s failed: %s", target["id"], extracted["error"])
+        _append_run_log(root, target["id"], now, {**result, "change_count": None, "diff": None})
         return result
     data = extracted["data"]
     previous = _load_previous(root, target["id"])
@@ -363,6 +390,8 @@ def _watch_target(root: Path, target: dict, now: datetime) -> dict:
                 "pages": data.get("pages") or []}
     diff = _diff(previous, snapshot)
     _save_snapshot(root, target["id"], snapshot)
+    _append_run_log(root, target["id"], now, {**result, "change_count": _change_count(diff), "diff": diff,
+                                              "carried_sections": carried})
     logging.info("[web_watch] %s: %d items, %d campaigns, %d changes in %.0fs",
                  target["id"], len(snapshot["items"]), len(snapshot["campaigns"]), _change_count(diff), result["elapsed_seconds"])
     return {**result, "data": snapshot, "diff": diff, "carried_sections": carried}
