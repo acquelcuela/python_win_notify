@@ -5,6 +5,8 @@
     "詳しくは docs/pc_environment_notes.md"
   ],
   "batch_schedule": [
+    {"time": "01:00", "days": "all", "modules": ["aws_archive_upload"], "_note": "送信を別プロセスで起動するだけ(すぐ終わる)。結果は05:30にチェック"},
+    {"time": "05:30", "days": "all", "modules": ["aws_archive_check", "aws_archive_upload_mail"]},
     {"time": "05:00", "days": "all", "modules": ["post_x_magazine"], "_note": "05:00〜05:15はネット不通。再開するときは05:30以降にずらす"},
     {"time": "06:30", "modules": ["stock_x_trends_web_fetch"]},
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
@@ -90,7 +92,17 @@
     "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true,
-    "web_watch": true
+    "web_watch": true,
+    "aws_archive_upload": true,
+    "aws_archive_check": true,
+    "aws_archive_upload_mail": true
+  },
+  "aws_archive_upload": {
+    "_note": "bucket / folders / done_dir / filelist_dir は config.local.json に書く(個人の情報のため)",
+    "aws_cli": "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe",
+    "storage_class": "DEEP_ARCHIVE",
+    "max_file_gb": 5,
+    "upload_timeout_seconds": 12600
   },
   "ai_summary": {
     "provider": "claude",

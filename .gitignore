@@ -53,3 +53,6 @@ src/config.local.json
 
 # Personal daily trade notes (morning analyses for evening review)
 trade_notes/
+
+# AWS Deep Archive: files to send / sent (large, personal; not in git)
+aws_deep_archive_backup/

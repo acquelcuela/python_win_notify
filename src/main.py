@@ -73,6 +73,9 @@ MODULE_ORDER = [
     "report_html",
     "mail_gmail",
     "web_watch",
+    "aws_archive_upload",
+    "aws_archive_check",
+    "aws_archive_upload_mail",
 ]
 RUN_HISTORY_PATH = ROOT / "state" / "run_history.json"
 RUN_LOCK_PATH = ROOT / "state" / "batch.lock"
