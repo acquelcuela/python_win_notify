@@ -115,6 +115,29 @@ def _fetch_today_change_pct(ticker_symbol: str, today_date) -> float | None:
         return None
 
 
+def _fetch_today_open_close(ticker_symbol: str, today_date) -> dict:
+    """Today's opening gap and open -> close move, recorded next to the
+    close-vs-previous-close hit (2026-10-22): a gap-up morning makes the
+    previous-close hit look better than what buying at the open would get."""
+    try:
+        hist = yf.Ticker(ticker_symbol).history(period="5d", interval="1d", auto_adjust=False).dropna(subset=["Close"])
+        if len(hist) < 2 or hist.index[-1].date() != today_date:
+            return {}
+        today, prev_close = hist.iloc[-1], float(hist.iloc[-2]["Close"])
+        open_price, close = float(today["Open"]), float(today["Close"])
+        if not open_price or not prev_close:
+            return {}
+        open_to_close = (close / open_price - 1) * 100
+        return {
+            "opening_gap_pct": round((open_price / prev_close - 1) * 100, 2),
+            "open_to_close_pct": round(open_to_close, 2),
+            "hit_open_to_close": bool(open_to_close > 0),
+        }
+    except Exception as exc:
+        logging.warning("[stock_range_eval] %s open/close fetch failed: %s", ticker_symbol, exc)
+        return {}
+
+
 # The report splits each candidate's track record by the day's market
 # direction (user request 2026-10-06: a single hit rate mixed ~65% on up
 # days with ~30% on down days). TOPIX itself isn't available from yfinance,
@@ -315,6 +338,7 @@ def run(root: Path) -> None:
             record["evaluated_date"] = today_label
             record["actual_change_pct"] = round(change_pct, 2)
             record["hit"] = hit
+            record.update(_fetch_today_open_close(record.get("ticker"), today_date))
             record["flipped"] = previous_hit is not None and previous_hit != hit
             record["previous_hit"] = previous_hit if record["flipped"] else None
             record.update(market)

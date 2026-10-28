@@ -73,6 +73,7 @@ MODULE_ORDER = [
     "report_html",
     "mail_gmail",
     "web_watch",
+    "intraday_archive",
     "aws_archive_upload",
     "aws_archive_check",
     "aws_archive_upload_mail",
@@ -355,8 +356,9 @@ MODULE_TIMEOUT_OVERRIDES = {
     "note_draft_post": 3000,
     # up to 8 Grok queries (600s each at most) plus one claude -p merge
     "radio_guest_check": 5400,
-    # data collection + one long claude -p write-up (timeout_seconds 420)
-    "trade_review": 600,
+    # data collection (49 holdings too) + one long claude -p write-up
+    # (timeout_seconds 720; took 323s on 2026-10-15)
+    "trade_review": 900,
     # one Chrome-driven claude -p per target (~2 min each in testing)
     "web_watch": 900,
 }

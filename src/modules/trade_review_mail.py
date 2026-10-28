@@ -104,6 +104,55 @@ def _series_table(rows: list[tuple[str, list, str]]) -> str:
     )
 
 
+# The prompt asks Claude to put this line under "■ 保有銘柄"; the table itself is
+# built here from the data, so all 49 holdings are listed with exact numbers
+# without Claude having to copy them (2026-10-15).
+HOLDINGS_MARKER = "[保有銘柄の表]"
+
+
+def _pct_cell(value, signed: bool = True) -> str:
+    if value is None:
+        return "-"
+    text = f"{value:+.1f}%" if signed else f"{value:.0f}%"
+    return _color_pcts(html.escape(text)) if signed else html.escape(text)
+
+
+def _holdings_table(holdings: list[dict]) -> str:
+    if not holdings:
+        return ""
+    rows = sorted(holdings, key=lambda h: ((h.get("moves") or {}).get("now_vs_prev") is None,
+                                            -((h.get("moves") or {}).get("now_vs_prev") or 0)))
+    head = "".join(f'<th {_CELL} bgcolor="#f1f5f9">{c}</th>' for c in
+                   ("銘柄", "前日比", "寄り付きの値の飛び", "寄り→15時", "30日レンジの位置", "5日の値動き"))
+    body = ""
+    for h in rows:
+        m = h.get("moves") or {}
+        star = "★" if h.get("also_in_watchlist") else ""
+        name = f'{star}{html.escape(str(h.get("name")))}<span style="color:#64748b;font-size:11px;">({html.escape(str(h.get("ticker", "")).removesuffix(".T"))})</span>'
+        cells = (
+            [_pct_cell(m.get("now_vs_prev")), _pct_cell(m.get("opening_gap")), _pct_cell(m.get("buy_open_sell_15")),
+             _pct_cell(m.get("position_30d"), signed=False), _pct_cell(m.get("change_5d"))]
+            if m else ["データなし", "", "", "", ""]
+        )
+        body += f'<tr><th {_CELL} bgcolor="#f8fafc" style="text-align:left;">{name}</th>' + "".join(f"<td {_CELL}>{c}</td>" for c in cells) + "</tr>"
+    return (
+        '<div style="overflow-x:auto;margin:4px 0 6px;">'
+        f'<table style="border-collapse:collapse;font-size:13px;"><tr>{head}</tr>{body}</table>'
+        '<div style="font-size:12px;color:#64748b;">※前日比の大きい順。★は注目銘柄にも入っている銘柄。'
+        '30日レンジの位置は、この30日の安値を0%・高値を100%としたときの今の値段の位置</div></div>'
+    )
+
+
+def _mail_html(text: str, data: dict) -> str:
+    holdings = (data or {}).get("holdings") or []
+    table = _holdings_table(holdings) if any(h.get("moves") for h in holdings) else ""
+    if HOLDINGS_MARKER in text:
+        before, _, after = text.partition(HOLDINGS_MARKER)
+        return _to_html(before) + table + _to_html(after)
+    return _to_html(text) + (('<div style="margin:18px 0 6px;padding:6px 10px;background:#111827;color:#ffffff;'
+                              'font-weight:bold;border-radius:4px;">■ 保有銘柄(一覧)</div>' + table) if table else "")
+
+
 def _to_html(text: str) -> str:
     rows = []
     pending: list = []  # consecutive time-series lines with the same columns -> one table
@@ -174,7 +223,7 @@ def run(root: Path, resend: bool = False) -> None:
         body = (
             "<html><body style=\"font-family:'Hiragino Sans','Yu Gothic',sans-serif;color:#0f172a;"
             'font-size:14px;line-height:1.6;max-width:760px;">'
-            f"{_to_html(payload['mail_text'])}"
+            f"{_mail_html(payload['mail_text'], payload.get('data'))}"
             "</body></html>"
         )
         try:

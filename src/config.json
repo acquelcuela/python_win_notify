@@ -15,17 +15,13 @@
       "modules": ["stock_nikkei", "stock_watchlist", "stock_dividend", "stock_ratings", "stock_turnover_watch", "nikkei_constituents", "market_news", "news_movers", "stock_x_trends", "ai_summary", "report_html", "mail_gmail"]
     },
     {
-      "time": "09:30",
-      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "ai_summary", "report_html", "mail_gmail"]
-    },
-    {
       "time": "12:15",
       "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
     },
     {"time": "11:00", "days": "all", "modules": ["radio_guest_check"]},
     {
       "time": "17:30",
-      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail"]
+      "modules": ["stock_nikkei", "stock_watchlist", "market_news", "news_movers", "stock_x_trends_eval", "stock_range_eval", "ai_summary", "report_html", "mail_gmail", "intraday_archive"]
     },
     {"time": "18:00", "modules": ["trade_review", "trade_review_mail"]},
     {
@@ -92,7 +88,8 @@
     "nikkei_constituents": true,
     "report_html": true,
     "mail_gmail": true,
-    "web_watch": true,
+    "web_watch": false,
+    "intraday_archive": true,
     "aws_archive_upload": true,
     "aws_archive_check": true,
     "aws_archive_upload_mail": true
@@ -120,7 +117,7 @@
   "trade_review": {
     "notes_dir": "../trade_notes",
     "claude_model": "",
-    "timeout_seconds": 420
+    "timeout_seconds": 720
   },
   "radio_guest_check": {
     "interval_days": 3,

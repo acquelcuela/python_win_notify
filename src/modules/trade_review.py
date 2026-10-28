@@ -153,7 +153,7 @@ def _intraday(symbols: list[str], today) -> dict:
     """Per symbol: prices at the open / 9:15 / 10:00 / 11:30 / 15:00 / last, and the previous close."""
     import yfinance as yf
 
-    daily = yf.download(symbols, period="5d", interval="1d", progress=False, auto_adjust=False, group_by="ticker", threads=True)
+    daily = yf.download(symbols, period="1mo", interval="1d", progress=False, auto_adjust=False, group_by="ticker", threads=True)
     intra = yf.download(symbols, period="1d", interval="5m", progress=False, auto_adjust=False, group_by="ticker", threads=True)
     result = {}
     for symbol in symbols:
@@ -191,10 +191,57 @@ def _intraday(symbols: list[str], today) -> dict:
                 "low": float(bars["Low"].min()),
                 "last": float(bars["Close"].iloc[-1]),
                 "last_bar": bars.index[-1].strftime("%H:%M"),
+                **_daily_context(day, today, float(bars["Close"].iloc[-1])),
             }
         except Exception as exc:  # one bad symbol shouldn't sink the rest
             logging.warning("[trade_review] intraday %s failed: %s", symbol, exc)
     return result
+
+
+def _daily_context(day, today, last: float) -> dict:
+    """Where today's price sits in the last ~30 days (0% = low, 100% = high)
+    and the change over 5 sessions - for the holdings table (2026-10-15)."""
+    past = day[[i.date() < today for i in day.index]]
+    if past.empty:
+        return {}
+    high = max(float(past["High"].max()), last)
+    low = min(float(past["Low"].min()), last)
+    base_5d = float(past["Close"].iloc[-5]) if len(past) >= 5 else None
+    return {
+        "position_30d": round((last - low) / (high - low) * 100) if high > low else None,
+        "change_5d": _pct(last, base_5d),
+    }
+
+
+def _holdings(root: Path) -> list[dict]:
+    """Holdings from config.local.json (personal, never in the public repo)."""
+    section = load_config(root).get("holdings") or {}
+    return [
+        {"name": h.get("name"), "ticker": h.get("ticker")}
+        for h in section.get("items") or [] if h.get("ticker")
+    ]
+
+
+def _holdings_summary(holdings: list[dict]) -> dict:
+    rows = [(h, (h.get("moves") or {}).get("now_vs_prev")) for h in holdings]
+    rows = [(h, v) for h, v in rows if v is not None]
+    if not rows:
+        return {"count": len(holdings), "with_data": 0}
+    rows.sort(key=lambda r: r[1], reverse=True)
+    label = lambda r: f"{r[0]['name']}({r[0]['ticker'].removesuffix('.T')}) {r[1]:+.1f}%"
+    values = [v for _, v in rows]
+    return {
+        "count": len(holdings),
+        "with_data": len(rows),
+        "up": sum(v > 0 for v in values),
+        "down": sum(v < 0 for v in values),
+        "average_change_pct": round(sum(values) / len(values), 2),
+        "top3": [label(r) for r in rows[:3]],
+        "bottom3": [label(r) for r in rows[-3:][::-1]],
+        "big_movers_3pct": [label(r) for r in rows if abs(r[1]) >= 3],
+        "near_30d_high": [f"{h['name']}({h['ticker'].removesuffix('.T')})" for h, _ in rows if (h["moves"].get("position_30d") or 0) >= 90],
+        "near_30d_low": [f"{h['name']}({h['ticker'].removesuffix('.T')})" for h, _ in rows if h["moves"].get("position_30d") is not None and h["moves"]["position_30d"] <= 10],
+    }
 
 
 def _pct(a, b):
@@ -216,6 +263,8 @@ def _moves(p: dict, stage: str) -> dict:
         "high_since_open": _pct(p["high"], o),
         "low_since_open": _pct(p["low"], o),
         "data_as_of": p["last_bar"],
+        "position_30d": p.get("position_30d"),
+        "change_5d": p.get("change_5d"),
     }
     if stage == "evening" and to10 is not None:
         moves["ten_oclock_rule"] = _pct(end, o) if to10 > 0 else to10
@@ -273,6 +322,7 @@ def _collect(root: Path, stage: str, now: datetime) -> dict:
         "weekday": WEEKDAYS_JP[now.weekday()],
         "stock_range": _stock_range_data(root, today),
         "x_trends": _x_trend_data(root, today),
+        "holdings": _holdings(root),
     }
     if stage == "morning":
         return data
@@ -280,6 +330,7 @@ def _collect(root: Path, stage: str, now: datetime) -> dict:
     symbols += [c["ticker"] for c in data["stock_range"].get("candidates") or []]
     symbols += [w["ticker"] for w in data["stock_range"].get("watchlist") or []]
     symbols += [f"{s['ticker']}.T" for s in data["x_trends"].get("stocks") or [] if s.get("ticker")]
+    symbols += [h["ticker"] for h in data["holdings"]]
     prices = _intraday(sorted(set(symbols)), now.date())
     if "^N225" not in prices:
         data["market_closed"] = True
@@ -295,6 +346,12 @@ def _collect(root: Path, stage: str, now: datetime) -> dict:
         p = prices.get(f"{s.get('ticker')}.T")
         if p:
             s["moves"] = _moves(p, stage)
+    watch_tickers = {w["ticker"] for w in data["stock_range"].get("watchlist") or []}
+    for h in data["holdings"]:
+        h["also_in_watchlist"] = h["ticker"] in watch_tickers
+        if h["ticker"] in prices:
+            h["moves"] = _moves(prices[h["ticker"]], stage)
+    data["holdings_summary"] = _holdings_summary(data["holdings"])
     if stage == "evening":
         data["big_gap_x_stocks_history"] = _update_gap_log(root, today, data["x_trends"].get("stocks") or [], prices)
         # Daily log (every trading day, 2026-10-14~); candidate records as fallback.
