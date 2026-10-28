@@ -74,6 +74,8 @@ MODULE_ORDER = [
     "mail_gmail",
     "web_watch",
     "intraday_archive",
+    "login_check",
+    "login_check_mail",
     "aws_archive_upload",
     "aws_archive_check",
     "aws_archive_upload_mail",
@@ -361,6 +363,8 @@ MODULE_TIMEOUT_OVERRIDES = {
     "trade_review": 900,
     # one Chrome-driven claude -p per target (~2 min each in testing)
     "web_watch": 900,
+    # claude auth status + one short Chrome check of grok.com (timeout 300s)
+    "login_check": 400,
 }
 
 

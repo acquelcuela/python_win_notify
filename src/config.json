@@ -8,6 +8,7 @@
     {"time": "01:00", "days": "all", "modules": ["aws_archive_upload"], "_note": "送信を別プロセスで起動するだけ(すぐ終わる)。結果は05:30にチェック"},
     {"time": "05:30", "days": "all", "modules": ["aws_archive_check", "aws_archive_upload_mail"]},
     {"time": "05:00", "days": "all", "modules": ["post_x_magazine"], "_note": "05:00〜05:15はネット不通。再開するときは05:30以降にずらす"},
+    {"time": "06:00", "days": "all", "modules": ["login_check", "login_check_mail"]},
     {"time": "06:30", "modules": ["stock_x_trends_web_fetch"]},
     {"time": "06:45", "modules": ["stock_range", "stock_range_mail"]},
     {
@@ -90,6 +91,8 @@
     "mail_gmail": true,
     "web_watch": false,
     "intraday_archive": true,
+    "login_check": true,
+    "login_check_mail": true,
     "aws_archive_upload": true,
     "aws_archive_check": true,
     "aws_archive_upload_mail": true
