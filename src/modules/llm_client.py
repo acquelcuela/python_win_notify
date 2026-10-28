@@ -115,6 +115,21 @@ def can_run(settings: dict) -> bool:
     return provider_of(settings) == "claude" or bool(os.getenv("GEMINI_API_KEY"))
 
 
+def _claude_error_text(stderr: str, stdout: str) -> str:
+    """The useful part of a failed claude -p run. Its JSON envelope starts with
+    usage counters and puts the actual message ("result", e.g. a login or
+    usage-limit notice) near the end, so a plain [:500] cut it off
+    (2026-10-25: failures during a plan switch had no visible reason)."""
+    try:
+        envelope = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        return (stderr or stdout or "")[:500]
+    parts = [str(envelope.get(k)) for k in ("result", "api_error_status", "subtype") if envelope.get(k)]
+    if stderr and stderr.strip():
+        parts.append(stderr.strip()[:300])
+    return " / ".join(parts)[:800] or (stdout or "")[:500]
+
+
 def _call_claude(prompt: str, model: str | None, cwd: Path | None, timeout_seconds: int = CLAUDE_TIMEOUT_SECONDS) -> str:
     claude_bin = _find_claude_binary()
     if not claude_bin:
@@ -140,7 +155,7 @@ def _call_claude(prompt: str, model: str | None, cwd: Path | None, timeout_secon
         proc.communicate()
         raise RuntimeError(f"claude CLI timed out after {timeout_seconds}s.")
     if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI exited {proc.returncode}: {(stderr or stdout)[:500]}")
+        raise RuntimeError(f"claude CLI exited {proc.returncode}: {_claude_error_text(stderr, stdout)}")
     envelope = json.loads(stdout)
     text = envelope.get("result")
     if envelope.get("is_error") or not isinstance(text, str) or not text.strip():
