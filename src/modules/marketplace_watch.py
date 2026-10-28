@@ -46,6 +46,8 @@ def _normalize_keywords(raw_keywords) -> list[dict]:
             if keyword:
                 keywords.append({"keyword": keyword, "target_price": None, "platforms": list(DEFAULT_PLATFORMS), "exclude": []})
         elif isinstance(entry, dict):
+            if entry.get("enabled") is False:  # paused, settings kept (e.g. Fire HD 10, 2026-10-18)
+                continue
             keyword = str(entry.get("keyword") or "").strip()
             if not keyword:
                 continue

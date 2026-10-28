@@ -5,11 +5,8 @@
       "target_price": 35000
     },
     {
-      "keyword": "Redmi 15 5G 8GB 256GB",
-      "target_price": 25000
-    },
-    {
       "keyword": "Fire HD 10",
+      "enabled": false,
       "platforms": [
         "yahoo_auction",
         "rakuma"
