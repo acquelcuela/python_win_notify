@@ -1,7 +1,7 @@
 {
   "queries": ["高配当株", "配当生活", "FIRE 配当", "NISA 高配当", "ポートフォリオ 配当", "増配"],
-  "daily_count": 2,
-  "candidate_count": 5,
+  "daily_count": 3,
+  "candidate_count": 7,
   "similarity_threshold": 0.2,
   "trend_seed_count": 15,
   "provider": "claude",
