@@ -39,9 +39,30 @@ def _format_ideas_text(data: dict, now: datetime) -> str:
         lines.append("本日は提案なしでした。")
     for index, idea in enumerate(ideas, start=1):
         lines.append(f"[{index}] {idea.get('title') or '-'}")
+        price = idea.get("price")
+        price_text = f"({price}円)" if isinstance(price, int) else ""
+        lines.append(f"    型: {idea.get('article_type') or '-'} / 区分: {idea.get('price_tier') or '-'}{price_text}")
+        lines.append(f"    テーマ: {idea.get('theme') or '-'}")
         lines.append(f"    切り口: {idea.get('angle') or '-'}")
+        lines.append(f"    有料パートにしかないもの: {idea.get('paid_value') or '-'}")
         lines.append(f"    カテゴリ: {idea.get('category') or '-'}")
         lines.append(f"    参考: {idea.get('inspired_by') or '-'}")
+        lines.append("")
+
+    refresh = data.get("refresh_candidates") or []
+    if refresh:
+        lines.append("--- 書き直し候補: 比較記事の全社が新しい決算を出しました ---")
+        for candidate in refresh:
+            lines.append(f"- {candidate.get('title') or '-'}")
+            for filing in candidate.get("filings") or []:
+                lines.append(f"    {filing}")
+        lines.append("")
+
+    tdnet = (data.get("tdnet_dividend_news") or [])[:10]
+    if tdnet:
+        lines.append("--- 参考: 配当関連の適時開示(TDnet) ---")
+        for item in tdnet:
+            lines.append(f"- {item.get('name')}({item.get('code')}) {item.get('title')}")
         lines.append("")
 
     trend_seeds = (data.get("trend_seeds") or [])[:8]
@@ -51,6 +72,13 @@ def _format_ideas_text(data: dict, now: datetime) -> str:
             like_count = seed.get("like_count")
             like_text = f"いいね{like_count:,}" if isinstance(like_count, int) else "-"
             lines.append(f"- {seed.get('title') or '-'} ({like_text})")
+
+    fresh_notes = (data.get("fresh_notes") or [])[:8]
+    if fresh_notes:
+        lines.append("")
+        lines.append("--- 参考: いま投稿されている記事(新着) ---")
+        for note in fresh_notes:
+            lines.append(f"- {note.get('title') or '-'}")
 
     return "\n".join(lines) + "\n"
 

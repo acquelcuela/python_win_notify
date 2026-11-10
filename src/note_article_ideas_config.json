@@ -1,11 +1,63 @@
 {
-  "queries": ["高配当株", "配当生活", "FIRE 配当", "NISA 高配当", "ポートフォリオ 配当", "増配"],
+  "queries": [
+    "高配当株",
+    "配当生活",
+    "FIRE 配当",
+    "NISA 高配当",
+    "ポートフォリオ 配当",
+    "増配"
+  ],
   "daily_count": 3,
   "candidate_count": 7,
-  "similarity_threshold": 0.2,
+  "similarity_threshold": 0.35,
   "trend_seed_count": 15,
   "provider": "claude",
   "model": "gemini-3.1-flash-lite",
   "claude_model": "",
-  "fallback_to_gemini": false
+  "fallback_to_gemini": false,
+  "trend_seed_max_age_days": 21,
+  "fresh_count": 15,
+  "theme_cooldown_days": 30,
+  "max_title_chars": 30,
+  "sold_titles": [
+    "楽天JEPQで年利10%は本当か。カバードコールの正直な話",
+    "資産を崩さずに生きる——配当FIREの設計図を全部公開する",
+    "カバードコールETFとは何か——楽天JEPQ・RYLD・SDIVの仕組みと違いを比べた",
+    "キリンHD（2503）vs アサヒグループHD（2502）——「食品高配当2択」ディフェンシブ株の配当継続力を比べた"
+  ],
+  "refresh_targets": [
+    {
+      "title": "NTT vs KDDI",
+      "codes": [
+        "9432",
+        "9433"
+      ]
+    },
+    {
+      "title": "積水ハウス vs 大和ハウス",
+      "codes": [
+        "1928",
+        "1925"
+      ]
+    },
+    {
+      "title": "三菱UFJ vs 三井住友",
+      "codes": [
+        "8306",
+        "8316"
+      ]
+    },
+    {
+      "title": "商社株 vs メガバンク",
+      "codes": [
+        "8058",
+        "8001",
+        "8306",
+        "8316"
+      ]
+    }
+  ],
+  "refresh_window_days": 30,
+  "tdnet_days": 2,
+  "tdnet_limit": 25
 }
