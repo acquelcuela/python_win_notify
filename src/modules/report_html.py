@@ -302,40 +302,10 @@ def _stock_range_hit_rate_text(hit_rate: dict) -> str:
     return f"モメンタム型 {_text('momentum')} / リバーサル型 {_text('reversal')}"
 
 
-# "特別注目銘柄": (type, ticker) pairs whose recorded stock_range hit rate
-# exceeds SPECIAL_WATCH_HIT_RATE_PCT with at least SPECIAL_WATCH_MIN_N
-# evaluations of that type - computed live from
-# state/stock_range_predictions.json on every render (user request
-# 2026-09-17) so membership stays current and a ticker can drop back out.
-# Momentum and reversal are counted separately since a ticker can do well as
-# one and poorly as the other. The thresholds are meant to be re-tuned about
-# monthly (user request 2026-10-02); at that time n>=10 / >50% flagged 17 of
-# 32 eligible pairs, and a walk-forward check had them hitting 57.8% vs
-# 50.3% for the rest - promising but not yet clearly beyond noise.
-SPECIAL_WATCH_MIN_N = 10
-SPECIAL_WATCH_HIT_RATE_PCT = 50.0
-
-
-def _special_watch_tickers(root: Path) -> dict[tuple[str, str], tuple[int, int]]:
-    path = root / "state" / "stock_range_predictions.json"
-    if not path.exists():
-        return {}
-    try:
-        records = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
-    by_key: dict[tuple[str, str], list[bool]] = defaultdict(list)
-    for r in records:
-        if r.get("evaluated") and r.get("hit") is not None and r.get("ticker") and r.get("type"):
-            by_key[(r["type"], r["ticker"])].append(bool(r["hit"]))
-    result = {}
-    for (kind, ticker), hits in by_key.items():
-        n = len(hits)
-        if n < SPECIAL_WATCH_MIN_N:
-            continue
-        if sum(hits) / n * 100 > SPECIAL_WATCH_HIT_RATE_PCT:
-            result[(kind, ticker)] = (sum(hits), n)
-    return result
+# The "特別注目銘柄" gold highlight (past hit rate by ticker and type) was
+# retired on 2026-11-05: a walk-forward check over 685 records found the
+# picked tickers hit 49.0% vs 49.6% for the rest, and stricter thresholds
+# did worse. See docs/rule/stock_range_analytics_rule.md.
 
 
 # 地合い別の成績(2026-10-06): 「当日プラスか」の的中率は、日経・TOPIXが
@@ -483,7 +453,6 @@ def _ticker_market_line(stats: dict, kind: str, ticker: str | None) -> str:
 def _stock_range_candidate_cards(
     candidates: list[dict],
     kind: str,
-    special_watch: dict[tuple[str, str], tuple[int, int]],
     market_stats: dict | None = None,
 ) -> str:
     if not candidates:
@@ -514,24 +483,11 @@ def _stock_range_candidate_cards(
             <div class="muted">30日レンジの{html.escape(str(position_pct))}%地点</div>
             """
         change_text, change_color = _fmt_change(candidate.get("change"), candidate.get("change_pct", 0))
-        special = special_watch.get((kind, candidate.get("ticker")))
-        card_style = (
-            "border:2px solid #f59e0b;background:#fffbeb;"
-            if special is not None
-            else ""
-        )
-        special_badge = (
-            f'<span style="background:#f59e0b;color:#fff;font-size:11px;padding:1px 6px;'
-            f'border-radius:10px;margin-left:6px;">⭐特別注目 的中{special[0]}/{special[1]}'
-            f'({special[0] / special[1] * 100:.0f}%)</span>'
-            if special is not None
-            else ""
-        )
         cards.append(
             f"""
-            <div class="news-hit-card" style="{card_style}">
+            <div class="news-hit-card">
               <div class="news-hit-title">
-                <strong>{html.escape(candidate.get("name", ""))}</strong>{special_badge}
+                <strong>{html.escape(candidate.get("name", ""))}</strong>
                 <span class="muted">{_yahoo_finance_link(candidate.get("ticker", "-"))} {_fmt_decimal(candidate.get("close"))}円</span>
                 <span style="float:right;font-weight:bold;">{candidate.get("score")}点</span>
               </div>
@@ -637,7 +593,6 @@ def _stock_range_score_section(root: Path) -> str:
                 'あたりが多い傾向(参考値、まだ実績日数は少なめ)</div>'
             )
 
-    special_watch = _special_watch_tickers(root)
     market_stats = _market_day_stats(root)
 
     return f"""
@@ -645,14 +600,13 @@ def _stock_range_score_section(root: Path) -> str:
       <div class="section-title">30日レンジ 本日の上昇候補(機械的スコアリング・投資助言ではありません)</div>
       <div class="muted">算出時刻: {_generated_at_label(payload)}(1日1回・朝06:45の市場が開く前に算出し、本日の値動きを対象にした候補です。終日この結果を表示します)</div>
       <div class="muted">30日レンジ位置・直近5営業日のトレンド・当日Xの話題・時間外の地合い(日経時間外、取れないときはCME先物)を組み合わせた参考指標です。的中を保証するものではありません。</div>
-      <div class="muted">⭐特別注目銘柄: 同じ型(モメンタム/リバーサル)で{SPECIAL_WATCH_MIN_N}回以上候補に出て、的中率が{SPECIAL_WATCH_HIT_RATE_PCT:.0f}%を超えた銘柄。カードを金色で強調表示します(基準は月1回程度見直し)。</div>
       {market_note}
       {_market_outlook_block(market_stats, market_change_pct)}
       {_timing_guide_block(RANGE_TIMING_GUIDE)}
       <h3>モメンタム型(上昇継続を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], "momentum", special_watch, market_stats)}
+      {_stock_range_candidate_cards(payload.get("momentum_candidates") or [], "momentum", market_stats)}
       <h3>リバーサル型(反発を期待)</h3>
-      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], "reversal", special_watch, market_stats)}
+      {_stock_range_candidate_cards(payload.get("reversal_candidates") or [], "reversal", market_stats)}
       <div class="muted" style="margin-top:8px;">これまでの的中率(当日の実際の値動きがプラスだったか): {_stock_range_hit_rate_text(payload.get("hit_rate") or {})}</div>
     </section>
     """
@@ -1035,23 +989,27 @@ X_GAP_CHASE_PCT = 3.0
 # 買う時刻は15分足でも比較した(8/10〜10/6の38営業日、9:00〜12:30の8通り×15時売り):
 # 寄り付きちょうど(9:00)はモメンタム型・煽り系で最も不利、15分待つだけで改善し、
 # モメンタム型は10時が最良(54%)。Xの材料系だけは逆に9:00が最良(待つほど利幅が減る)。
+# Re-measured on 2026-11-06 from the saved 5-minute bars (state/intraday_archive,
+# 48 trading days 2026-08-25..11-05, mostly falling/flat markets; 30-day-range
+# candidates only from 10/06). The previous numbers came from 1-hour/15-minute
+# bars of an earlier, rising period and no longer held (e.g. X "positive" at
+# 9:00 fell from 66-67% to 49%).
 RANGE_TIMING_GUIDE = (
-    "<b>寄り付きちょうど(9:00)には買わない</b>。モメンタム型は9:00買い→15時売りが最も不利(プラス48%)",
-    "<b>モメンタム型は10時ごろに買う→15時に売る</b>(プラス54〜57%)。"
-    "寄り付きから10時までに2%以上下げていれば60%",
-    "リバーサル型はどの時刻に買っても比較的よい(15時売りでプラス54〜71%、件数は少なめ)",
-    "寄り付きで買ってしまった場合: <b>10時にプラスなら15時まで持つ</b>(79%がプラスのまま終了)、"
-    "<b>マイナスなら10時で売る</b>(15時にプラスへ戻るのは25%)",
-    "日経平均が寄り付きから10時までに0.5%以上下げた日は、10時に買う→15時がプラス57%"
-    "(日経平均自体も15日中11日で戻した)",
+    "<b>30日レンジの候補は、朝の時間外が+0.5%以上の日に絞る</b>。この期間は、どの時刻に買っても"
+    "引けでプラスは3〜4割(モメンタム36〜48%・リバーサル29〜41%、10/6〜の111件)",
+    "寄り付きで買ってしまった場合: <b>10時にプラスなら持つ</b>(リバーサル74%・モメンタム55%がプラスで終了)、"
+    "<b>マイナスなら10時で売る</b>(引けでプラスへ戻るのは15〜20%)",
+    "注目銘柄は<b>下げの朝(日経平均の寄りが-0.5%以下)に寄り〜10時で買う→引け</b>が最も良い(61〜66%)。"
+    "平らな朝は46〜47%で勝ちにくい(48日・433件)",
+    "日経平均が寄り付きから10時までに0.5%以上下げた日は、16日中10日で引けまでに戻した"
+    "(その日の候補・注目銘柄の10時買い→引けは54%)",
 )
 X_TIMING_GUIDE = (
-    "<b>◎材料系(positive)は朝イチ(9:00〜9:15)に買う→15時に売る</b>(プラス66〜67%、平均+1%前後)。"
-    "待つほど利幅が減る(11時買いは+0.4%)",
-    "◎材料系を買ったら: <b>10時にプラスなら15時まで持つ</b>(94%がプラスのまま終了)、"
-    "マイナスなら10時で売る(15時にプラスは38%)",
-    "<b>⚠煽り系・寄り付きで+3%以上値が飛んだ銘柄は見送る</b>。"
-    "9:00に買うと最悪(煽り系はプラス39%)、時刻をずらしても勝てない(41〜48%)",
+    "◎材料系(positive)も、この期間は<b>9:00買い→引けで49%(平均-0.99%)</b>と、以前(66〜67%)より大きく悪化。"
+    "上げの朝の10時買いだけ59%(17件)",
+    "◎材料系を買ったら: <b>10時にプラスなら持つ</b>(68%がプラスで終了)、マイナスなら10時で売る(引けでプラスは36%)",
+    "<b>⚠煽り系・寄り付きで+3%以上値が飛んだ銘柄は見送る</b>。煽り系はどの時刻・どの朝でも18〜37%、"
+    "寄りで+3%以上飛んだものは平均-4.6%",
 )
 
 
@@ -1059,7 +1017,7 @@ def _timing_guide_block(lines: tuple[str, ...]) -> str:
     items = "".join(f"<li>{line}</li>" for line in lines)
     return (
         '<div style="margin-top:8px;padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;">'
-        "<div style=\"font-weight:bold;\">売買タイミングの目安(過去約2か月・1時間足と15分足で検証)</div>"
+        "<div style=\"font-weight:bold;\">売買タイミングの目安(5分足で検証: 2026-08-25〜11-05の48営業日、下げ・横ばいの日が多い期間)</div>"
         f'<ul style="margin:4px 0 0 18px;padding:0;">{items}</ul></div>'
     )
 

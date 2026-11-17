@@ -86,7 +86,6 @@ def _stock_range_data(root: Path, today: str) -> dict:
     if not payload:
         return {"available": False}
     stats = rh._market_day_stats(root)
-    special = rh._special_watch_tickers(root)
     candidates = []
     for kind in ("momentum", "reversal"):
         for c in payload.get(f"{kind}_candidates") or []:
@@ -99,7 +98,6 @@ def _stock_range_data(root: Path, today: str) -> dict:
                 "change_pct_prev_day": c.get("change_pct"),
                 "reasons": c.get("reasons"),
                 "market_day_record": _strip_html(rh._ticker_market_line(stats, kind, c.get("ticker"))),
-                "special_watch": (kind, c.get("ticker")) in special,
             })
     market_change_pct = payload.get("market_change_pct")
     bucket = rh._futures_bucket(market_change_pct)
