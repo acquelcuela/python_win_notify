@@ -20,18 +20,7 @@ DEFAULT_MAX_ITEMS = 30
 SEEN_LOG_PATH = Path("state") / "marketplace_watch_seen.json"
 SEEN_LOG_RETENTION_DAYS = 180
 
-_ITEM_BLOCK_RE = re.compile(r'<li class="Product">(.*?)</li>', re.S)
-_ATTR_RE = {
-    "id": re.compile(r'data-auction-id="([^"]*)"'),
-    "title": re.compile(r'data-auction-title="([^"]*)"'),
-    "price": re.compile(r'data-auction-price="([^"]*)"'),
-    "endtime": re.compile(r'data-auction-endtime="([^"]*)"'),
-    "buynowprice": re.compile(r'data-auction-buynowprice="([^"]*)"'),
-    "isfreeshipping": re.compile(r'data-auction-isfreeshipping="([^"]*)"'),
-    "isshoppingitem": re.compile(r'data-auction-isshoppingitem="([^"]*)"'),
-}
-_POSTAGE_RE = re.compile(r'<p class="Product__postage">\s*([^<]*?)\s*</p>', re.S)
-_BID_COUNT_RE = re.compile(r'<dd class="Product__bid">([^<]*)</dd>')
+_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 
 
 def _normalize_keywords(raw_keywords) -> list[dict]:
@@ -86,25 +75,27 @@ def _load_config(root: Path) -> dict:
 
 
 def _fetch_yahoo_auction(keyword: str, options: dict | None = None) -> list[dict]:
-    """Yahoo Auction has no public keyword-search API, and its old
-    search-result RSS feed no longer returns RSS (checked 2026-08-19: the
-    rss=1 param just returns the normal HTML page now). The search-results
-    page is still server-rendered HTML though, and each listing carries
-    data-auction-* attributes that Yahoo's own JS uses for click tracking -
-    pulling those is far less fragile than scraping visible DOM text, so
-    that's the approach here instead of a true API call. Mercari was
-    evaluated too but its search page ships empty (client-side rendered
-    after a JS/CAPTCHA challenge) with no equivalent, so it's not covered
-    here - see keyword_and_marketplace_watch_spec_20260819.md."""
+    """Yahoo Auction has no public keyword-search API. Its search page used
+    to be server-rendered <li class="Product"> cards with data-auction-*
+    attributes, but around 2026-10-14 it moved to a Next.js page
+    (/search/search/<keyword>/0, the old URL 301-redirects there) and those
+    cards disappeared - the parser then silently returned 0 items for a
+    month. The listings are now read from the page's __NEXT_DATA__ JSON
+    (props.pageProps.initialState.search.items.listing.items). If that
+    JSON or path is missing, this raises so the run shows a warning
+    instead of quietly reporting nothing. Mercari is not covered - see
+    keyword_and_marketplace_watch_spec_20260819.md."""
     options = options or {}
     query = {"p": keyword}
     # Optional per keyword (2026-10-11): price range passed to Yahoo's own
-    # search (min/max) and newest-first order, so the 50 listings on the
-    # first page are the latest ones in range rather than "recommended".
+    # search and newest-first order, so the 50 listings on the first page
+    # are the latest ones in range rather than "recommended". The redirect
+    # keeps s1/o1 (as select=22) but drops min/max, so the price range uses
+    # aucminprice/aucmaxprice (checked 2026-11-13).
     if isinstance(options.get("min_price"), (int, float)):
-        query["min"] = int(options["min_price"])
+        query["aucminprice"] = int(options["min_price"])
     if isinstance(options.get("max_price"), (int, float)):
-        query["max"] = int(options["max_price"])
+        query["aucmaxprice"] = int(options["max_price"])
     if options.get("newest_first"):
         query.update({"s1": "new", "o1": "d"})
     params = urllib.parse.urlencode(query)
@@ -113,59 +104,50 @@ def _fetch_yahoo_auction(keyword: str, options: dict | None = None) -> list[dict
     with urllib.request.urlopen(request, timeout=30) as response:
         body = response.read().decode("utf-8", errors="replace")
 
+    next_data = _NEXT_DATA_RE.search(body)
+    if not next_data:
+        raise ValueError("Yahoo search page has no __NEXT_DATA__ (page format changed?)")
+    try:
+        search = json.loads(next_data.group(1))["props"]["pageProps"]["initialState"]["search"]
+        listing = search["items"]["listing"]["items"] or []
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Yahoo search data not where expected (page format changed?): {exc!r}") from exc
+
     items = []
     seen_ids_in_page = set()
-    for match in _ITEM_BLOCK_RE.finditer(body):
-        block = match.group(1)
-        id_match = _ATTR_RE["id"].search(block)
-        if not id_match:
+    for entry in listing:
+        if not isinstance(entry, dict):
             continue
-        auction_id = id_match.group(1).strip()
+        auction_id = str(entry.get("auctionId") or "").strip()
         if not auction_id or auction_id in seen_ids_in_page:
             continue
         seen_ids_in_page.add(auction_id)
 
-        title_match = _ATTR_RE["title"].search(block)
-        price_match = _ATTR_RE["price"].search(block)
-        price_text = price_match.group(1) if price_match else None
-
-        end_time = None
-        endtime_match = _ATTR_RE["endtime"].search(block)
-        if endtime_match and endtime_match.group(1).isdigit():
-            end_time = datetime.fromtimestamp(int(endtime_match.group(1)), tz=JST).isoformat()
-
-        buynow_price = None
-        buynow_match = _ATTR_RE["buynowprice"].search(block)
-        if buynow_match and buynow_match.group(1).isdigit() and int(buynow_match.group(1)) > 0:
-            buynow_price = int(buynow_match.group(1))
-
-        postage_match = _POSTAGE_RE.search(block)
-        shipping = html.unescape(postage_match.group(1)).strip() if postage_match else ""
-        if not shipping:
-            isfreeshipping_match = _ATTR_RE["isfreeshipping"].search(block)
-            if isfreeshipping_match and isfreeshipping_match.group(1) == "1":
-                shipping = "送料無料"
-        bid_count_match = _BID_COUNT_RE.search(block)
-
-        # Yahoo Auction's item cards carry no explicit "store seller" badge
-        # in this search-result view - data-auction-isshoppingitem (this
-        # listing is also synced to Yahoo Shopping's catalog) is the closest
-        # available proxy for a business/store seller, but it's inferred,
-        # not a confirmed store flag straight from Yahoo.
-        isshopping_match = _ATTR_RE["isshoppingitem"].search(block)
-        is_store = bool(isshopping_match and isshopping_match.group(1) == "1")
+        buynow = entry.get("buyNowPrice")
+        price = entry.get("price")
+        fee = entry.get("currentPriceShippingFee")
+        if entry.get("isFreeShipping"):
+            shipping = "送料無料"
+        elif isinstance(fee, (int, float)) and fee > 0:
+            shipping = f"送料 {int(fee):,}円"
+        else:
+            shipping = None
+        bid_count = entry.get("bidCount")
+        seller = entry.get("seller") if isinstance(entry.get("seller"), dict) else {}
 
         items.append(
             {
                 "platform": "yahoo_auction",
                 "id": auction_id,
-                "title": html.unescape(title_match.group(1)).strip() if title_match else "",
-                "is_store": is_store,
-                "price": int(price_text) if price_text and price_text.isdigit() else None,
-                "buy_now_price": buynow_price,
-                "shipping": shipping or None,
-                "end_time": end_time,
-                "bid_count": bid_count_match.group(1).strip() if bid_count_match else None,
+                "title": html.unescape(str(entry.get("title") or "")).strip(),
+                # The new page carries an explicit store-seller flag
+                # (seller.isStore), replacing the old isshoppingitem proxy.
+                "is_store": bool(seller.get("isStore")),
+                "price": int(price) if isinstance(price, (int, float)) else None,
+                "buy_now_price": int(buynow) if isinstance(buynow, (int, float)) and buynow > 0 else None,
+                "shipping": shipping,
+                "end_time": entry.get("endTime"),
+                "bid_count": str(bid_count) if bid_count is not None else None,
                 "url": f"https://auctions.yahoo.co.jp/jp/auction/{auction_id}",
             }
         )
