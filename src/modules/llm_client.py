@@ -170,7 +170,8 @@ def generate(prompt: str, settings: dict, default_gemini_model: str, cwd: Path |
     if provider_of(settings) == "claude":
         claude_model = settings.get("claude_model") or None
         try:
-            return LLMResult(_call_claude(prompt, claude_model, cwd), "claude", claude_model or "claude (CLI default)")
+            timeout = int(settings.get("claude_timeout_seconds") or CLAUDE_TIMEOUT_SECONDS)
+            return LLMResult(_call_claude(prompt, claude_model, cwd, timeout), "claude", claude_model or "claude (CLI default)")
         except Exception as exc:
             fallback_reason = str(exc)
             if not (settings.get("fallback_to_gemini", True) and os.getenv("GEMINI_API_KEY")):

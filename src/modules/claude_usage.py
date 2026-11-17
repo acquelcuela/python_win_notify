@@ -12,7 +12,7 @@ from modules.mail_gmail import send_html_mail
 
 
 JST = timezone(timedelta(hours=9), "JST")
-CLI_TIMEOUT_SECONDS = 120
+CLI_TIMEOUT_SECONDS = 300
 
 # `claude -p "/usage"` answers locally with the same text the interactive
 # /usage screen shows, e.g.

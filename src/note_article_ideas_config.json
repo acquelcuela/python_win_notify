@@ -15,6 +15,7 @@
   "model": "gemini-3.1-flash-lite",
   "claude_model": "",
   "fallback_to_gemini": false,
+  "claude_timeout_seconds": 480,
   "trend_seed_max_age_days": 21,
   "fresh_count": 15,
   "theme_cooldown_days": 30,

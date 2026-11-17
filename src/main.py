@@ -365,6 +365,12 @@ MODULE_TIMEOUT_OVERRIDES = {
     "web_watch": 900,
     # claude auth status + one short Chrome check of grok.com (timeout 300s)
     "login_check": 400,
+    # trend fetch + one claude -p (claude_timeout_seconds 480); took 130-170s
+    # through 2026-11-09 and hit the old 180s limit on 2026-11-10
+    "note_article_ideas": 600,
+    # one `claude -p /usage` (CLI_TIMEOUT_SECONDS 300); timed out at 120s on
+    # 11/5-11/7 right after note_article_ideas
+    "claude_usage": 360,
 }
 
 
