@@ -34,7 +34,7 @@
         "keyword_watch", "keyword_watch_mail",
         "marketplace_watch", "marketplace_watch_mail",
         "note_article_ideas", "note_article_ideas_export",
-        "onedrive_check", "disk_usage", "claude_usage"
+        "onedrive_check", "disk_usage", "artifact_download", "claude_usage"
       ]
     },
     {"time": "22:30", "modules": ["stock_x_trends_web_fetch"]},
@@ -95,7 +95,8 @@
     "login_check_mail": true,
     "aws_archive_upload": true,
     "aws_archive_check": true,
-    "aws_archive_upload_mail": true
+    "aws_archive_upload_mail": true,
+    "artifact_download": true
   },
   "aws_archive_upload": {
     "_note": "bucket / folders / done_dir / filelist_dir は config.local.json に書く(個人の情報のため)",

@@ -64,6 +64,7 @@ MODULE_ORDER = [
     "note_article_ideas_export",
     "onedrive_check",
     "disk_usage",
+    "artifact_download",
     "claude_usage",
     "note_draft_post",
     "radio_guest_check",
@@ -371,6 +372,8 @@ MODULE_TIMEOUT_OVERRIDES = {
     # one `claude -p /usage` (CLI_TIMEOUT_SECONDS 300); timed out at 120s on
     # 11/5-11/7 right after note_article_ideas
     "claude_usage": 360,
+    # one claude -p per doc that exports every tab (TIMEOUT_SECONDS 300 each)
+    "artifact_download": 400,
 }
 
 

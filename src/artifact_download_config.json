@@ -1,0 +1,12 @@
+{
+  "_note": "claude.ai のドキュメントを output/artifact_download/<name>/<日付>/ に保存する。毎日22:00に起動し、前回成功から interval_days 日以上たっていれば実行。format は markdown / text / html / docx / pdf",
+  "interval_days": 3,
+  "targets": [
+    {
+      "name": "スケジュール",
+      "url": "https://claude.ai/artifact/J1zkWDYP6euKc9MpcJuooR",
+      "format": "markdown",
+      "enabled": true
+    }
+  ]
+}
