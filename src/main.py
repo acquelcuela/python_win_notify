@@ -63,6 +63,7 @@ MODULE_ORDER = [
     "note_article_ideas",
     "note_article_ideas_export",
     "onedrive_check",
+    "gdrive_check",
     "disk_usage",
     "artifact_download",
     "claude_usage",
