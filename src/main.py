@@ -67,6 +67,8 @@ MODULE_ORDER = [
     "disk_usage",
     "artifact_download",
     "claude_usage",
+    "ana_mobile_data",
+    "ana_mobile_data_mail",
     "note_draft_post",
     "radio_guest_check",
     "trade_review",
@@ -375,6 +377,8 @@ MODULE_TIMEOUT_OVERRIDES = {
     "claude_usage": 360,
     # one claude -p per doc that exports every tab (TIMEOUT_SECONDS 300 each)
     "artifact_download": 400,
+    # one short Chrome-driven claude -p on the ANA Mobile member page (TIMEOUT_SECONDS 300)
+    "ana_mobile_data": 400,
 }
 
 
