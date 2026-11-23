@@ -56,3 +56,6 @@ trade_notes/
 
 # AWS Deep Archive: files to send / sent (large, personal; not in git)
 aws_deep_archive_backup/
+
+# Medium (English) writing/posting workspace (personal content)
+medium/
